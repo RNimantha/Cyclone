@@ -8,15 +8,16 @@
     "dev": "tsc --watch",
     "watch": "tsc --watch",
     "start": "node server.js",
-    "dev:server": "tsc --watch & node --watch server.js"
+    "dev:server": "tsc --watch & node --watch server.js",
+    "netlify:build": "tsc"
   },
   "dependencies": {
+    "@netlify/functions": "^5.1.1",
     "express": "^4.18.2"
   },
   "devDependencies": {
-    "typescript": "^5.0.0",
     "@types/express": "^4.17.21",
-    "@types/node": "^20.10.0"
+    "@types/node": "^20.10.0",
+    "typescript": "^5.0.0"
   }
 }
-
