@@ -133,6 +133,22 @@
     <script>
         const ADMIN_PASSWORD = 'Rashmika@14cyclone';
 
+        // Helper function to send data to Supabase API
+        async function sendToAnalytics(type, data) {
+            try {
+                await fetch('/api/analytics', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ type, data })
+                });
+            } catch (error) {
+                console.error('Failed to send analytics:', error);
+                // Silently fail - don't interrupt user experience
+            }
+        }
+
         // Track login page visit
         function trackLoginPageVisit() {
             const visit = {
@@ -143,6 +159,10 @@
                 url: window.location.href
             };
             
+            // Send to Supabase
+            sendToAnalytics('login_visit', visit);
+            
+            // Also store locally as fallback
             const loginVisits = JSON.parse(localStorage.getItem('loginVisits') || '[]');
             loginVisits.push(visit);
             
@@ -163,6 +183,10 @@
                 attemptedPasswordLength: attemptedPassword ? attemptedPassword.length : 0
             };
             
+            // Send to Supabase
+            sendToAnalytics('login_attempt', attempt);
+            
+            // Also store locally as fallback
             const loginAttempts = JSON.parse(localStorage.getItem('loginAttempts') || '[]');
             loginAttempts.push(attempt);
             

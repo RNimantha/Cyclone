@@ -213,12 +213,33 @@
             window.location.href = '/admin/login';
         }
 
-        function loadAdminData() {
-            // Load visit statistics
-            const visits = JSON.parse(localStorage.getItem('visits') || '[]');
-            const events = JSON.parse(localStorage.getItem('events') || '[]');
-            const loginVisits = JSON.parse(localStorage.getItem('loginVisits') || '[]');
-            const loginAttempts = JSON.parse(localStorage.getItem('loginAttempts') || '[]');
+        async function loadAdminData() {
+            // Try to fetch from Supabase API first, fallback to localStorage
+            let visits = [];
+            let events = [];
+            let loginVisits = [];
+            let loginAttempts = [];
+            
+            try {
+                const response = await fetch('/api/analytics');
+                if (response.ok) {
+                    const data = await response.json();
+                    visits = data.visits || [];
+                    events = data.events || [];
+                    loginVisits = data.loginVisits || [];
+                    loginAttempts = data.loginAttempts || [];
+                } else {
+                    // Fallback to localStorage if API fails
+                    throw new Error('API failed');
+                }
+            } catch (error) {
+                console.warn('Failed to fetch from Supabase, using localStorage:', error);
+                // Fallback to localStorage
+                visits = JSON.parse(localStorage.getItem('visits') || '[]');
+                events = JSON.parse(localStorage.getItem('events') || '[]');
+                loginVisits = JSON.parse(localStorage.getItem('loginVisits') || '[]');
+                loginAttempts = JSON.parse(localStorage.getItem('loginAttempts') || '[]');
+            }
             
             // Calculate statistics
             const uniqueVisitors = new Set(visits.map(v => v.visitorId)).size;

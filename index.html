@@ -548,6 +548,22 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     
     <script>
+        // Helper function to send data to Supabase API
+        async function sendToAnalytics(type, data) {
+            try {
+                await fetch('/api/analytics', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ type, data })
+                });
+            } catch (error) {
+                console.error('Failed to send analytics:', error);
+                // Silently fail - don't interrupt user experience
+            }
+        }
+
         // Visitor tracking
         function trackVisit() {
             // Generate or get visitor ID
@@ -568,7 +584,10 @@
                 screenHeight: window.screen.height
             };
             
-            // Store visit
+            // Send to Supabase
+            sendToAnalytics('visit', visit);
+            
+            // Also store locally as fallback
             const visits = JSON.parse(localStorage.getItem('visits') || '[]');
             visits.push(visit);
             
@@ -589,6 +608,10 @@
                 visitorId: localStorage.getItem('visitorId') || 'unknown'
             };
             
+            // Send to Supabase
+            sendToAnalytics('event', event);
+            
+            // Also store locally as fallback
             const events = JSON.parse(localStorage.getItem('events') || '[]');
             events.push(event);
             
