@@ -176,6 +176,13 @@ app.get('/api/donations', async (_req, res) => {
 app.get('/', (_req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
 });
+// Serve admin routes
+app.get('/admin/login', (_req, res) => {
+    res.sendFile(path.join(__dirname, 'login.html'));
+});
+app.get('/admin', (_req, res) => {
+    res.sendFile(path.join(__dirname, 'admin.html'));
+});
 // Start server
 app.listen(PORT, () => {
     console.log(`Server is running on http://localhost:${PORT}`);

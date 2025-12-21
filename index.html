@@ -4,6 +4,25 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Cyclone Relief Fund – University of Colombo, Faculty of Science, 2016/17 Batch</title>
+    
+    <!-- Google Analytics -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=GA_MEASUREMENT_ID"></script>
+    <script>
+        window.dataLayer = window.dataLayer || [];
+        function gtag(){dataLayer.push(arguments);}
+        gtag('js', new Date());
+        gtag('config', 'GA_MEASUREMENT_ID', {
+            page_title: 'Cyclone Relief Fund Dashboard',
+            page_location: window.location.href
+        });
+        
+        // Track page views
+        gtag('event', 'page_view', {
+            page_title: 'Cyclone Relief Fund Dashboard',
+            page_location: window.location.href
+        });
+    </script>
+    
     <style>
         * {
             margin: 0;
@@ -476,14 +495,19 @@
         <div class="section">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
                 <h2 style="margin: 0;">Donation Records</h2>
-                <button id="downloadPdfBtn" style="padding: 10px 20px; background: #3498db; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 600; font-size: 0.9rem; transition: background 0.2s;" onmouseover="this.style.background='#2980b9'" onmouseout="this.style.background='#3498db'">
-                    Download PDF
-                </button>
+                <div style="display: flex; gap: 10px;">
+                    <button id="downloadPdfBtn" style="padding: 10px 20px; background: #3498db; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 600; font-size: 0.9rem; transition: background 0.2s;" onmouseover="this.style.background='#2980b9'" onmouseout="this.style.background='#3498db'">
+                        Download PDF
+                    </button>
+                </div>
             </div>
             <div id="lastUpdated" style="margin-bottom: 15px; color: #666; font-size: 0.9rem;"></div>
-            <div style="margin-bottom: 10px;">
+            <div style="margin-bottom: 10px; display: flex; gap: 10px;">
                 <button id="sortByAmountBtn" style="padding: 8px 16px; background: #f8f9fa; color: #2c3e50; border: 1px solid #ddd; border-radius: 4px; cursor: pointer; font-weight: 500; font-size: 0.85rem; transition: all 0.2s;" onmouseover="this.style.background='#e9ecef'" onmouseout="this.style.background='#f8f9fa'">
                     Sort by Amount <span id="sortIndicator">↓</span>
+                </button>
+                <button id="sortByTimestampBtn" style="padding: 8px 16px; background: #f8f9fa; color: #2c3e50; border: 1px solid #ddd; border-radius: 4px; cursor: pointer; font-weight: 500; font-size: 0.85rem; transition: all 0.2s;" onmouseover="this.style.background='#e9ecef'" onmouseout="this.style.background='#f8f9fa'">
+                    Sort by Timestamp <span id="sortTimestampIndicator">↕</span>
                 </button>
             </div>
             <table>
@@ -524,6 +548,58 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     
     <script>
+        // Visitor tracking
+        function trackVisit() {
+            // Generate or get visitor ID
+            let visitorId = localStorage.getItem('visitorId');
+            if (!visitorId) {
+                visitorId = 'visitor_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+                localStorage.setItem('visitorId', visitorId);
+            }
+            
+            // Get visit information
+            const visit = {
+                visitorId: visitorId,
+                timestamp: new Date().toISOString(),
+                userAgent: navigator.userAgent,
+                referrer: document.referrer || 'Direct',
+                url: window.location.href,
+                screenWidth: window.screen.width,
+                screenHeight: window.screen.height
+            };
+            
+            // Store visit
+            const visits = JSON.parse(localStorage.getItem('visits') || '[]');
+            visits.push(visit);
+            
+            // Keep only last 1000 visits
+            if (visits.length > 1000) {
+                visits.shift();
+            }
+            
+            localStorage.setItem('visits', JSON.stringify(visits));
+        }
+        
+        // Track events (exposed globally for app.js)
+        window.trackLocalEvent = function(eventType, label) {
+            const event = {
+                type: eventType,
+                label: label || '',
+                timestamp: new Date().toISOString(),
+                visitorId: localStorage.getItem('visitorId') || 'unknown'
+            };
+            
+            const events = JSON.parse(localStorage.getItem('events') || '[]');
+            events.push(event);
+            
+            // Keep only last 500 events
+            if (events.length > 500) {
+                events.shift();
+            }
+            
+            localStorage.setItem('events', JSON.stringify(events));
+        };
+        
         function toggleProgramDetails() {
             const content = document.getElementById('programContent');
             const toggle = document.getElementById('programToggle');
@@ -533,6 +609,9 @@
                 toggle.classList.toggle('expanded');
             }
         }
+        
+        // Track visit on page load
+        trackVisit();
     </script>
 
     <script src="app.js"></script>

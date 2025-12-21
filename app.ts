@@ -7,6 +7,7 @@ let currentDonationData: DonationResponse | null = null;
 
 // Sort state
 let sortOrder: 'asc' | 'desc' = 'desc'; // Default: highest to lowest
+let sortType: 'amount' | 'timestamp' = 'amount'; // Default: sort by amount
 
 interface DonationResponse {
     totalAmount: number;
@@ -83,7 +84,14 @@ async function fetchDonationData(): Promise<void> {
         currentDonationData = data;
         
         updateDashboard(data.totalAmount, data.totalDonors);
-        updateDonationTable(data.donations, sortOrder);
+        updateDonationTable(data.donations, sortOrder, sortType);
+        
+        // Track successful data load
+        trackEvent('data_loaded', {
+            event_category: 'data',
+            event_label: `Donation Data - ${data.totalDonors} donors`,
+            value: data.totalDonors
+        });
         
         // Hide status message on success
         statusEl.style.display = 'none';
@@ -221,7 +229,21 @@ function sortDonationsByAmount(donations: ProcessedDonation[], order: 'asc' | 'd
     return sorted;
 }
 
-function updateDonationTable(donations: ProcessedDonation[], sortOrder: 'asc' | 'desc' = 'desc'): void {
+function sortDonationsByTimestamp(donations: ProcessedDonation[], order: 'asc' | 'desc'): ProcessedDonation[] {
+    const sorted = [...donations].sort((a, b) => {
+        const dateA = new Date(a.timestamp).getTime();
+        const dateB = new Date(b.timestamp).getTime();
+        
+        if (order === 'desc') {
+            return dateB - dateA; // Newest to oldest
+        } else {
+            return dateA - dateB; // Oldest to newest
+        }
+    });
+    return sorted;
+}
+
+function updateDonationTable(donations: ProcessedDonation[], currentSortOrder: 'asc' | 'desc' = 'desc', currentSortType: 'amount' | 'timestamp' = 'amount'): void {
     const tbody = document.getElementById('donationTable');
     if (!tbody) return;
     
@@ -236,8 +258,10 @@ function updateDonationTable(donations: ProcessedDonation[], sortOrder: 'asc' | 
         return;
     }
     
-    // Sort donations by amount
-    const sortedDonations = sortDonationsByAmount(donations, sortOrder);
+    // Sort donations based on sort type
+    const sortedDonations = currentSortType === 'timestamp' 
+        ? sortDonationsByTimestamp(donations, currentSortOrder)
+        : sortDonationsByAmount(donations, currentSortOrder);
     
     tbody.innerHTML = sortedDonations.map(donation => {
         const receiptCell = donation.receipt && donation.receipt.trim() !== '' 
@@ -365,6 +389,8 @@ function downloadDonationPDF(): void {
 
 // Sort by amount function
 function toggleSortByAmount(): void {
+    // Set sort type to amount
+    sortType = 'amount';
     // Toggle sort order
     sortOrder = sortOrder === 'desc' ? 'asc' : 'desc';
     
@@ -380,9 +406,58 @@ function toggleSortByAmount(): void {
         sortBtn.innerHTML = `Sort by Amount <span id="sortIndicator">${sortOrder === 'desc' ? '↓' : '↑'}</span>`;
     }
     
+    // Reset timestamp sort button
+    const sortTimestampBtn = document.getElementById('sortByTimestampBtn');
+    if (sortTimestampBtn) {
+        sortTimestampBtn.innerHTML = `Sort by Timestamp <span id="sortTimestampIndicator">↕</span>`;
+    }
+    
     // Re-render table with new sort order
     if (currentDonationData) {
-        updateDonationTable(currentDonationData.donations, sortOrder);
+        updateDonationTable(currentDonationData.donations, sortOrder, sortType);
+    }
+}
+
+// Sort by timestamp function
+function toggleSortByTimestamp(): void {
+    // Set sort type to timestamp
+    sortType = 'timestamp';
+    // Toggle sort order
+    sortOrder = sortOrder === 'desc' ? 'asc' : 'desc';
+    
+    // Update sort indicator
+    const sortTimestampIndicator = document.getElementById('sortTimestampIndicator');
+    if (sortTimestampIndicator) {
+        sortTimestampIndicator.textContent = sortOrder === 'desc' ? '↓' : '↑';
+    }
+    
+    // Update button text
+    const sortTimestampBtn = document.getElementById('sortByTimestampBtn');
+    if (sortTimestampBtn) {
+        sortTimestampBtn.innerHTML = `Sort by Timestamp <span id="sortTimestampIndicator">${sortOrder === 'desc' ? '↓' : '↑'}</span>`;
+    }
+    
+    // Reset amount sort button
+    const sortBtn = document.getElementById('sortByAmountBtn');
+    if (sortBtn) {
+        sortBtn.innerHTML = `Sort by Amount <span id="sortIndicator">↕</span>`;
+    }
+    
+    // Re-render table with new sort order
+    if (currentDonationData) {
+        updateDonationTable(currentDonationData.donations, sortOrder, sortType);
+    }
+}
+
+// Track custom events
+function trackEvent(eventName: string, eventParams?: Record<string, any>): void {
+    if (typeof (window as any).gtag === 'function') {
+        (window as any).gtag('event', eventName, eventParams);
+    }
+    
+    // Also track locally for admin dashboard
+    if (typeof (window as any).trackLocalEvent === 'function') {
+        (window as any).trackLocalEvent(eventName, eventParams?.event_label);
     }
 }
 
@@ -390,12 +465,35 @@ function toggleSortByAmount(): void {
 document.addEventListener('DOMContentLoaded', () => {
     const downloadBtn = document.getElementById('downloadPdfBtn');
     if (downloadBtn) {
-        downloadBtn.addEventListener('click', downloadDonationPDF);
+        downloadBtn.addEventListener('click', () => {
+            trackEvent('download_pdf', {
+                event_category: 'engagement',
+                event_label: 'Donation Records PDF'
+            });
+            downloadDonationPDF();
+        });
     }
     
     const sortBtn = document.getElementById('sortByAmountBtn');
     if (sortBtn) {
-        sortBtn.addEventListener('click', toggleSortByAmount);
+        sortBtn.addEventListener('click', () => {
+            trackEvent('sort_donations', {
+                event_category: 'engagement',
+                event_label: 'Sort by Amount'
+            });
+            toggleSortByAmount();
+        });
+    }
+    
+    const sortTimestampBtn = document.getElementById('sortByTimestampBtn');
+    if (sortTimestampBtn) {
+        sortTimestampBtn.addEventListener('click', () => {
+            trackEvent('sort_donations', {
+                event_category: 'engagement',
+                event_label: 'Sort by Timestamp'
+            });
+            toggleSortByTimestamp();
+        });
     }
 });
 

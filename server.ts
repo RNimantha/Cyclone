@@ -237,6 +237,15 @@ app.get('/', (_req: Request, res: Response) => {
     res.sendFile(path.join(__dirname, 'index.html'));
 });
 
+// Serve admin routes
+app.get('/admin/login', (_req: Request, res: Response) => {
+    res.sendFile(path.join(__dirname, 'login.html'));
+});
+
+app.get('/admin', (_req: Request, res: Response) => {
+    res.sendFile(path.join(__dirname, 'admin.html'));
+});
+
 // Start server
 app.listen(PORT, () => {
     console.log(`Server is running on http://localhost:${PORT}`);
