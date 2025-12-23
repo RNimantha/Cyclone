@@ -140,6 +140,62 @@
             padding: 40px;
             color: #999;
         }
+
+        .chart-container {
+            margin-top: 20px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 4px;
+        }
+
+        .chart-bar {
+            display: flex;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .chart-label {
+            min-width: 400px;
+            max-width: 800px;
+            font-size: 0.8rem;
+            color: #666;
+            word-break: break-all;
+            font-family: 'Courier New', monospace;
+            white-space: normal;
+            line-height: 1.4;
+        }
+
+        .chart-visual {
+            flex: 1;
+            height: 30px;
+            background: #ecf0f1;
+            border-radius: 4px;
+            overflow: hidden;
+            margin: 0 15px;
+            border: 1px solid #ddd;
+            position: relative;
+        }
+
+        .chart-fill {
+            height: 100%;
+            background: linear-gradient(to right, #3498db, #2980b9);
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            padding-right: 10px;
+            color: white;
+            font-weight: 600;
+            font-size: 0.85rem;
+            min-width: 50px;
+        }
+
+        .chart-value {
+            min-width: 80px;
+            text-align: right;
+            font-weight: 600;
+            color: #2c3e50;
+            font-size: 0.9rem;
+        }
     </style>
 </head>
 <body>
@@ -195,6 +251,13 @@
             <h2>Event Log</h2>
             <div id="eventsTable">
                 <div class="no-data">Loading event data...</div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>User Agent Statistics</h2>
+            <div id="userAgentChart" style="margin-top: 20px;">
+                <div class="no-data">Loading user agent data...</div>
             </div>
         </div>
     </div>
@@ -340,6 +403,60 @@
                     </table>
                 `;
             }
+            
+            // Display user agent chart
+            displayUserAgentChart(visits);
+        }
+
+        // Display User Agent Chart
+        function displayUserAgentChart(visits) {
+            const chartContainer = document.getElementById('userAgentChart');
+            if (!chartContainer) return;
+
+            if (visits.length === 0) {
+                chartContainer.innerHTML = '<div class="no-data">No user agent data available</div>';
+                return;
+            }
+
+            // Group by exact user agent string and count them
+            const userAgentCounts = {};
+            visits.forEach(visit => {
+                const userAgent = visit.userAgent || 'Unknown';
+                
+                if (!userAgentCounts[userAgent]) {
+                    userAgentCounts[userAgent] = 0;
+                }
+                userAgentCounts[userAgent]++;
+            });
+
+            // Sort by count (descending) and take top 15
+            const sortedAgents = Object.entries(userAgentCounts)
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, 15);
+
+            if (sortedAgents.length === 0) {
+                chartContainer.innerHTML = '<div class="no-data">No user agent data available</div>';
+                return;
+            }
+
+            const maxCount = Math.max(...sortedAgents.map(([_, count]) => count));
+
+            chartContainer.innerHTML = `
+                <div class="chart-container">
+                    ${sortedAgents.map(([agent, count]) => {
+                        const percentage = maxCount > 0 ? (count / maxCount) * 100 : 0;
+                        return `
+                            <div class="chart-bar">
+                                <div class="chart-label">${agent.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
+                                <div class="chart-visual">
+                                    <div class="chart-fill" style="width: ${percentage}%;">${count}</div>
+                                </div>
+                                <div class="chart-value">${count.toLocaleString()}</div>
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+            `;
         }
 
         // Check auth on page load

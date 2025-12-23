@@ -546,6 +546,12 @@
         </div>
 
         <div id="status" class="status loading" style="display: none;">Loading donation data...</div>
+
+        <div class="section" style="text-align: center; padding: 20px; background: #f8f9fa; border-radius: 8px; margin-top: 30px;">
+            <p id="visitorStatsMessage" style="font-size: 1rem; color: #666; margin: 0;">
+                The site has received a total of <strong id="totalVisitsCount">0</strong> visits from <strong id="uniqueUsersCount">0</strong> unique users.
+            </p>
+        </div>
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -638,6 +644,66 @@
         
         // Track visit on page load
         trackVisit();
+
+        // Load and display visitor statistics
+        async function loadVisitorStatistics() {
+            try {
+                const response = await fetch('/api/analytics');
+                if (response.ok) {
+                    const data = await response.json();
+                    const visits = data.visits || [];
+                    const totalVisits = visits.length;
+                    const uniqueVisitors = new Set(visits.map(v => v.visitorId)).size;
+                    
+                    const totalVisitsCountEl = document.getElementById('totalVisitsCount');
+                    const uniqueUsersCountEl = document.getElementById('uniqueUsersCount');
+                    
+                    if (totalVisitsCountEl) {
+                        totalVisitsCountEl.textContent = totalVisits.toLocaleString();
+                    }
+                    if (uniqueUsersCountEl) {
+                        uniqueUsersCountEl.textContent = uniqueVisitors.toLocaleString();
+                    }
+                } else {
+                    // Fallback to localStorage
+                    const visits = JSON.parse(localStorage.getItem('visits') || '[]');
+                    const totalVisits = visits.length;
+                    const uniqueVisitors = new Set(visits.map(v => v.visitorId)).size;
+                    
+                    const totalVisitsCountEl = document.getElementById('totalVisitsCount');
+                    const uniqueUsersCountEl = document.getElementById('uniqueUsersCount');
+                    
+                    if (totalVisitsCountEl) {
+                        totalVisitsCountEl.textContent = totalVisits.toLocaleString();
+                    }
+                    if (uniqueUsersCountEl) {
+                        uniqueUsersCountEl.textContent = uniqueVisitors.toLocaleString();
+                    }
+                }
+            } catch (error) {
+                console.warn('Failed to fetch visitor statistics:', error);
+                // Fallback to localStorage
+                const visits = JSON.parse(localStorage.getItem('visits') || '[]');
+                const totalVisits = visits.length;
+                const uniqueVisitors = new Set(visits.map(v => v.visitorId)).size;
+                
+                const totalVisitsCountEl = document.getElementById('totalVisitsCount');
+                const uniqueUsersCountEl = document.getElementById('uniqueUsersCount');
+                
+                if (totalVisitsCountEl) {
+                    totalVisitsCountEl.textContent = totalVisits.toLocaleString();
+                }
+                if (uniqueUsersCountEl) {
+                    uniqueUsersCountEl.textContent = uniqueVisitors.toLocaleString();
+                }
+            }
+        }
+
+        // Load visitor statistics on page load
+        loadVisitorStatistics();
+        
+        // Refresh visitor statistics every 60 seconds
+        setInterval(loadVisitorStatistics, 60000);
     </script>
 
     <script src="app.js"></script>
