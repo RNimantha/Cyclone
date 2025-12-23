@@ -16,7 +16,7 @@
     "noImplicitReturns": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["app.ts", "server.ts", "netlify/functions/**/*"],
+  "include": ["app.ts", "server.ts", "expenses.ts", "netlify/functions/**/*"],
   "exclude": ["node_modules"]
 }
 

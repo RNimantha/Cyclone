@@ -1,50 +1,10 @@
-import express, { Request, Response } from 'express';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import { dirname } from 'path';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-
-const app = express();
-const PORT = Number(process.env.PORT) || 4000;
+import type { Handler } from '@netlify/functions';
 
 // Configuration
-// Google Sheet ID from the share URL
-const GOOGLE_SHEET_ID: string = '15wWPAOJL5COh5flsyubX4AM_beoFoMc4W7D6ri7t-Ak';
-// Build the CSV export URL (without gid parameter as it causes 400 errors)
-const GOOGLE_SHEET_CSV_URL: string = `https://docs.google.com/spreadsheets/d/${GOOGLE_SHEET_ID}/export?format=csv`;
-const TARGET_AMOUNT: number = 600000; // LKR
-
-// Expenses Google Sheet ID
 const EXPENSES_GOOGLE_SHEET_ID: string = '1VU3ajNLA8EpTUMwp1Z4qTpuXlX5kS1Ec64AGgr3mZCg';
 const EXPENSES_GOOGLE_SHEET_CSV_URL: string = `https://docs.google.com/spreadsheets/d/${EXPENSES_GOOGLE_SHEET_ID}/export?format=csv`;
 
 // Type definitions
-interface ProcessedDonation {
-    timestamp: string;
-    name: string;
-    amount: number;
-    receipt: string;
-}
-
-interface ColumnMapping {
-    timestamp: string | null;
-    name: string | null;
-    amount: string | null;
-    receipt: string | null;
-}
-
-interface DonationResponse {
-    totalAmount: number;
-    totalDonors: number;
-    targetAmount: number;
-    percentage: number;
-    donations: ProcessedDonation[];
-    lastUpdated: string;
-}
-
-// Expenses types
 interface ProcessedExpense {
     timestamp: string;
     expenseDate: string;
@@ -136,138 +96,6 @@ function parseCSV(csvText: string): Record<string, string>[] {
     return data;
 }
 
-function processDonations(donations: Record<string, string>[]): DonationResponse {
-    const possibleColumns = {
-        timestamp: ['timestamp', 'date', 'time', 'datetime', 'submitted', 'submission time'],
-        name: ['name', 'donor', 'donor name', 'donor_name', 'full name'],
-        amount: ['amount', 'donation', 'donation amount', 'value', 'lkr'],
-        receipt: ['receipt', 'receipt link', 'receipt_url', 'link', 'url', 'proof']
-    };
-    
-    const headers = Object.keys(donations[0] || {});
-    const columns: ColumnMapping = {
-        timestamp: null,
-        name: null,
-        amount: null,
-        receipt: null
-    };
-    
-    Object.keys(possibleColumns).forEach(key => {
-        const found = headers.find(h => 
-            possibleColumns[key as keyof typeof possibleColumns].some(p => 
-                h.toLowerCase().includes(p.toLowerCase())
-            )
-        );
-        columns[key as keyof ColumnMapping] = found || null;
-    });
-    
-    let totalAmount = 0;
-    const processedDonations: ProcessedDonation[] = [];
-    
-    donations.forEach((donation, index) => {
-        const amountStr = columns.amount ? donation[columns.amount] : '';
-        const amount = sanitizeAmount(amountStr);
-        
-        if (amount > 0) {
-            totalAmount += amount;
-            
-            processedDonations.push({
-                timestamp: columns.timestamp ? donation[columns.timestamp] : `Row ${index + 2}`,
-                name: columns.name ? donation[columns.name] : 'Anonymous',
-                amount: amount,
-                receipt: columns.receipt ? donation[columns.receipt] : ''
-            });
-        }
-    });
-    
-    processedDonations.sort((a, b) => {
-        if (a.timestamp && b.timestamp) {
-            return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
-        }
-        return b.amount - a.amount;
-    });
-    
-    const percentage = Math.min((totalAmount / TARGET_AMOUNT) * 100, 100);
-    
-    return {
-        totalAmount,
-        totalDonors: processedDonations.length,
-        targetAmount: TARGET_AMOUNT,
-        percentage,
-        donations: processedDonations,
-        lastUpdated: new Date().toISOString()
-    };
-}
-
-// Middleware
-app.use(express.json());
-app.use(express.static(path.join(__dirname)));
-
-// CORS middleware
-app.use((_req: Request, res: Response, next) => {
-    res.header('Access-Control-Allow-Origin', '*');
-    res.header('Access-Control-Allow-Methods', 'GET, OPTIONS');
-    res.header('Access-Control-Allow-Headers', 'Content-Type');
-    next();
-});
-
-// API Routes
-app.get('/api/donations', async (_req: Request, res: Response) => {
-    try {
-        if (!GOOGLE_SHEET_CSV_URL || GOOGLE_SHEET_CSV_URL === 'YOUR_GOOGLE_SHEET_CSV_URL_HERE') {
-            res.status(500).json({ 
-                error: 'Google Sheet CSV URL not configured' 
-            });
-            return;
-        }
-        
-        // Build the URL with cache-busting parameter
-        const url = `${GOOGLE_SHEET_CSV_URL}&t=${Date.now()}`;
-        
-        const response = await fetch(url, {
-            method: 'GET',
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                'Accept': 'text/csv'
-            },
-            redirect: 'follow'
-        });
-        
-        if (!response.ok) {
-            const errorText = await response.text().catch(() => '');
-            console.error('Google Sheets response error:', response.status, response.statusText);
-            console.error('Error body:', errorText.substring(0, 500));
-            throw new Error(`Failed to fetch data: ${response.status} ${response.statusText}. Make sure the Google Sheet is published to the web.`);
-        }
-        
-        const csvText = await response.text();
-        
-        if (!csvText || csvText.trim().length === 0) {
-            throw new Error('Received empty response from Google Sheets');
-        }
-        
-        const donations = parseCSV(csvText);
-        
-        if (donations.length === 0) {
-            res.status(404).json({ 
-                error: 'No donation data found in the sheet' 
-            });
-            return;
-        }
-        
-        const processedData = processDonations(donations);
-        res.json(processedData);
-        
-    } catch (error) {
-        console.error('Error fetching donation data:', error);
-        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-        res.status(500).json({ 
-            error: errorMessage 
-        });
-    }
-});
-
-// Process expenses function
 function processExpenses(expenses: Record<string, string>[]): ExpenseResponse {
     const possibleColumns = {
         timestamp: ['timestamp', 'date', 'time', 'datetime', 'submitted', 'submission time'],
@@ -347,14 +175,21 @@ function processExpenses(expenses: Record<string, string>[]): ExpenseResponse {
     };
 }
 
-// Expenses API endpoint
-app.get('/api/expenses', async (_req: Request, res: Response) => {
+export const handler: Handler = async (_event, _context) => {
     try {
         if (!EXPENSES_GOOGLE_SHEET_CSV_URL || EXPENSES_GOOGLE_SHEET_CSV_URL === 'YOUR_GOOGLE_SHEET_CSV_URL_HERE') {
-            res.status(500).json({ 
-                error: 'Expenses Google Sheet CSV URL not configured' 
-            });
-            return;
+            return {
+                statusCode: 500,
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Access-Control-Allow-Origin': '*',
+                    'Access-Control-Allow-Methods': 'GET, OPTIONS',
+                    'Access-Control-Allow-Headers': 'Content-Type'
+                },
+                body: JSON.stringify({ 
+                    error: 'Expenses Google Sheet CSV URL not configured' 
+                })
+            };
         }
         
         // Build the URL with cache-busting parameter
@@ -370,9 +205,6 @@ app.get('/api/expenses', async (_req: Request, res: Response) => {
         });
         
         if (!response.ok) {
-            const errorText = await response.text().catch(() => '');
-            console.error('Google Sheets response error:', response.status, response.statusText);
-            console.error('Error body:', errorText.substring(0, 500));
             throw new Error(`Failed to fetch data: ${response.status} ${response.statusText}. Make sure the Google Sheet is published to the web.`);
         }
         
@@ -385,45 +217,49 @@ app.get('/api/expenses', async (_req: Request, res: Response) => {
         const expenses = parseCSV(csvText);
         
         if (expenses.length === 0) {
-            res.status(404).json({ 
-                error: 'No expense data found in the sheet' 
-            });
-            return;
+            return {
+                statusCode: 404,
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Access-Control-Allow-Origin': '*',
+                    'Access-Control-Allow-Methods': 'GET, OPTIONS',
+                    'Access-Control-Allow-Headers': 'Content-Type'
+                },
+                body: JSON.stringify({ 
+                    error: 'No expense data found in the sheet' 
+                })
+            };
         }
         
         const processedData = processExpenses(expenses);
-        res.json(processedData);
+        
+        return {
+            statusCode: 200,
+            headers: {
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'GET, OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type'
+            },
+            body: JSON.stringify(processedData)
+        };
         
     } catch (error) {
         console.error('Error fetching expense data:', error);
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-        res.status(500).json({ 
-            error: errorMessage 
-        });
+        
+        return {
+            statusCode: 500,
+            headers: {
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'GET, OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type'
+            },
+            body: JSON.stringify({ 
+                error: errorMessage 
+            })
+        };
     }
-});
+};
 
-// Serve index.html for root route
-app.get('/', (_req: Request, res: Response) => {
-    res.sendFile(path.join(__dirname, 'index.html'));
-});
-
-// Serve admin routes
-app.get('/admin/login', (_req: Request, res: Response) => {
-    res.sendFile(path.join(__dirname, 'login.html'));
-});
-
-app.get('/admin', (_req: Request, res: Response) => {
-    res.sendFile(path.join(__dirname, 'admin.html'));
-});
-
-// Serve expenses.html
-app.get('/expenses', (_req: Request, res: Response) => {
-    res.sendFile(path.join(__dirname, 'expenses.html'));
-});
-
-// Start server
-app.listen(PORT, () => {
-    console.log(`Server is running on http://localhost:${PORT}`);
-    console.log(`API endpoint: http://localhost:${PORT}/api/donations`);
-});

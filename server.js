@@ -5,13 +5,16 @@ import { dirname } from 'path';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = Number(process.env.PORT) || 4000;
 // Configuration
 // Google Sheet ID from the share URL
 const GOOGLE_SHEET_ID = '15wWPAOJL5COh5flsyubX4AM_beoFoMc4W7D6ri7t-Ak';
 // Build the CSV export URL (without gid parameter as it causes 400 errors)
 const GOOGLE_SHEET_CSV_URL = `https://docs.google.com/spreadsheets/d/${GOOGLE_SHEET_ID}/export?format=csv`;
 const TARGET_AMOUNT = 600000; // LKR
+// Expenses Google Sheet ID
+const EXPENSES_GOOGLE_SHEET_ID = '1VU3ajNLA8EpTUMwp1Z4qTpuXlX5kS1Ec64AGgr3mZCg';
+const EXPENSES_GOOGLE_SHEET_CSV_URL = `https://docs.google.com/spreadsheets/d/${EXPENSES_GOOGLE_SHEET_ID}/export?format=csv`;
 // Utility functions
 function sanitizeAmount(amountStr) {
     if (!amountStr)
@@ -172,6 +175,119 @@ app.get('/api/donations', async (_req, res) => {
         });
     }
 });
+// Process expenses function
+function processExpenses(expenses) {
+    const possibleColumns = {
+        timestamp: ['timestamp', 'date', 'time', 'datetime', 'submitted', 'submission time'],
+        expenseDate: ['expense date', 'expense_date', 'date', 'expense date'],
+        title: ['expense title', 'title', 'purpose', 'expense title / purpose', 'expense_title', 'expense purpose'],
+        category: ['category', 'categories', 'expense categories', 'expense category', 'expense_categories'],
+        description: ['description', 'desc', 'details'],
+        amount: ['amount', 'amount (lkr)', 'amount(lkr)', 'value', 'lkr'],
+        receipt: ['receipt', 'receipt link', 'receipt_url', 'link', 'url', 'proof'],
+        remarks: ['remarks', 'remark', 'notes', 'note']
+    };
+    const headers = Object.keys(expenses[0] || {});
+    const columns = {
+        timestamp: null,
+        expenseDate: null,
+        title: null,
+        category: null,
+        description: null,
+        amount: null,
+        receipt: null,
+        remarks: null
+    };
+    Object.keys(possibleColumns).forEach(key => {
+        const found = headers.find(h => possibleColumns[key].some(p => h.toLowerCase().includes(p.toLowerCase())));
+        columns[key] = found || null;
+    });
+    let totalAmount = 0;
+    const processedExpenses = [];
+    const categories = {};
+    expenses.forEach((expense, index) => {
+        const amountStr = columns.amount ? expense[columns.amount] : '';
+        const amount = sanitizeAmount(amountStr);
+        if (amount > 0 || Object.values(expense).some(v => v.trim() !== '')) {
+            const category = columns.category ? (expense[columns.category] || 'Uncategorized') : 'Uncategorized';
+            totalAmount += amount;
+            if (!categories[category]) {
+                categories[category] = 0;
+            }
+            categories[category] += amount;
+            processedExpenses.push({
+                timestamp: columns.timestamp ? expense[columns.timestamp] : `Row ${index + 2}`,
+                expenseDate: columns.expenseDate ? expense[columns.expenseDate] : '',
+                title: columns.title ? expense[columns.title] : 'No title',
+                category: category,
+                description: columns.description ? expense[columns.description] : '',
+                amount: amount,
+                receipt: columns.receipt ? expense[columns.receipt] : '',
+                remarks: columns.remarks ? expense[columns.remarks] : ''
+            });
+        }
+    });
+    // Sort by expense date or timestamp (newest first)
+    processedExpenses.sort((a, b) => {
+        const dateA = a.expenseDate ? new Date(a.expenseDate).getTime() : (a.timestamp ? new Date(a.timestamp).getTime() : 0);
+        const dateB = b.expenseDate ? new Date(b.expenseDate).getTime() : (b.timestamp ? new Date(b.timestamp).getTime() : 0);
+        return dateB - dateA;
+    });
+    return {
+        totalAmount,
+        totalExpenses: processedExpenses.length,
+        expenses: processedExpenses,
+        lastUpdated: new Date().toISOString(),
+        categories
+    };
+}
+// Expenses API endpoint
+app.get('/api/expenses', async (_req, res) => {
+    try {
+        if (!EXPENSES_GOOGLE_SHEET_CSV_URL || EXPENSES_GOOGLE_SHEET_CSV_URL === 'YOUR_GOOGLE_SHEET_CSV_URL_HERE') {
+            res.status(500).json({
+                error: 'Expenses Google Sheet CSV URL not configured'
+            });
+            return;
+        }
+        // Build the URL with cache-busting parameter
+        const url = `${EXPENSES_GOOGLE_SHEET_CSV_URL}&t=${Date.now()}`;
+        const response = await fetch(url, {
+            method: 'GET',
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'Accept': 'text/csv'
+            },
+            redirect: 'follow'
+        });
+        if (!response.ok) {
+            const errorText = await response.text().catch(() => '');
+            console.error('Google Sheets response error:', response.status, response.statusText);
+            console.error('Error body:', errorText.substring(0, 500));
+            throw new Error(`Failed to fetch data: ${response.status} ${response.statusText}. Make sure the Google Sheet is published to the web.`);
+        }
+        const csvText = await response.text();
+        if (!csvText || csvText.trim().length === 0) {
+            throw new Error('Received empty response from Google Sheets');
+        }
+        const expenses = parseCSV(csvText);
+        if (expenses.length === 0) {
+            res.status(404).json({
+                error: 'No expense data found in the sheet'
+            });
+            return;
+        }
+        const processedData = processExpenses(expenses);
+        res.json(processedData);
+    }
+    catch (error) {
+        console.error('Error fetching expense data:', error);
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        res.status(500).json({
+            error: errorMessage
+        });
+    }
+});
 // Serve index.html for root route
 app.get('/', (_req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
@@ -182,6 +298,10 @@ app.get('/admin/login', (_req, res) => {
 });
 app.get('/admin', (_req, res) => {
     res.sendFile(path.join(__dirname, 'admin.html'));
+});
+// Serve expenses.html
+app.get('/expenses', (_req, res) => {
+    res.sendFile(path.join(__dirname, 'expenses.html'));
 });
 // Start server
 app.listen(PORT, () => {

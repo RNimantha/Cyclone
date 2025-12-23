@@ -13,6 +13,11 @@
   status = 200
 
 [[redirects]]
+  from = "/api/expenses"
+  to = "/.netlify/functions/expenses"
+  status = 200
+
+[[redirects]]
   from = "/admin/login"
   to = "/login.html"
   status = 200
