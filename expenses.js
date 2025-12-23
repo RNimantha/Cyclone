@@ -225,49 +225,6 @@ function updateReceiptStatus(expenses) {
     if (withoutReceiptCountEl) {
         withoutReceiptCountEl.textContent = `${withoutReceiptCount} expense${withoutReceiptCount !== 1 ? 's' : ''}`;
     }
-    // Update receipt pie chart
-    updateReceiptChart(withReceiptAmount, withoutReceiptAmount, withReceiptCount, withoutReceiptCount);
-}
-// Update Receipt Chart (Pie Chart)
-function updateReceiptChart(withAmount, withoutAmount, withCount, withoutCount) {
-    const chartContainer = document.getElementById('receiptChart');
-    if (!chartContainer)
-        return;
-    const total = withAmount + withoutAmount;
-    if (total === 0) {
-        chartContainer.innerHTML = '<div style="text-align: center; color: #999; padding: 20px;">No receipt data available</div>';
-        return;
-    }
-    const withPercentage = (withAmount / total) * 100;
-    // Create pie chart using CSS (simple approach)
-    chartContainer.innerHTML = `
-        <div class="pie-chart">
-            <div class="pie-chart-visual">
-                <div style="width: 200px; height: 200px; border-radius: 50%; background: conic-gradient(
-                    #27ae60 0% ${withPercentage}%,
-                    #e74c3c ${withPercentage}% 100%
-                ); display: flex; align-items: center; justify-content: center; color: white; font-weight: 600; font-size: 1.2rem; text-shadow: 0 1px 3px rgba(0,0,0,0.3);">
-                    ${total > 0 ? Math.round(withPercentage) + '%' : '0%'}
-                </div>
-            </div>
-            <div class="pie-legend">
-                <div class="pie-legend-item">
-                    <div class="pie-legend-color" style="background: #27ae60;"></div>
-                    <div>
-                        <div style="font-weight: 600;">With Receipt</div>
-                        <div style="font-size: 0.85rem; color: #666;">${formatExpenseCurrency(withAmount)} (${withCount})</div>
-                    </div>
-                </div>
-                <div class="pie-legend-item">
-                    <div class="pie-legend-color" style="background: #e74c3c;"></div>
-                    <div>
-                        <div style="font-weight: 600;">Without Receipt</div>
-                        <div style="font-size: 0.85rem; color: #666;">${formatExpenseCurrency(withoutAmount)} (${withoutCount})</div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    `;
 }
 // Update Expenses Over Time (Line Chart)
 function updateTimeChart(expenses) {
