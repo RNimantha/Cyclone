@@ -2,9 +2,17 @@
 const EXPENSES_API_URL: string = '/api/expenses';
 const EXPENSES_REFRESH_INTERVAL: number = 30000; // 30 seconds
 
+// Budget configuration - fetch from main dashboard
+const DONATIONS_API_URL: string = '/api/donations';
+
 // Store current expense data
 let currentExpenseData: ExpenseResponse | null = null;
 let selectedCategory: string | null = null;
+let receiptFilter: 'all' | 'with' | 'without' = 'all';
+let searchQuery: string = '';
+
+// Store budget amount
+let currentBudget: number = 0;
 
 interface ExpenseResponse {
     totalAmount: number;
@@ -23,6 +31,9 @@ interface ProcessedExpense {
     amount: number;
     receipt: string;
     remarks: string;
+    invoice: string;
+    photos: string;
+    verificationStatus?: 'verified' | 'pending' | 'no_receipt';
 }
 
 // Utility functions
@@ -47,6 +58,48 @@ function formatExpenseDate(dateStr: string): string {
     }
 }
 
+// Fetch budget from main dashboard
+async function fetchBudget(): Promise<number> {
+    try {
+        const response = await fetch(DONATIONS_API_URL + '?t=' + Date.now(), {
+            method: 'GET',
+            cache: 'no-cache'
+        });
+        
+        if (response.ok) {
+            const data = await response.json();
+            return data.totalAmount || 0;
+        }
+    } catch (error) {
+        console.warn('Failed to fetch budget from donations API:', error);
+    }
+    return 0;
+}
+
+// Determine verification status for an expense
+function getVerificationStatus(expense: ProcessedExpense): 'verified' | 'pending' | 'no_receipt' {
+    // If status is already set, use it (for future manual override)
+    if (expense.verificationStatus) {
+        return expense.verificationStatus;
+    }
+    
+    // Fallback rules: if receipt exists → verified, if no receipt → no_receipt
+    if (expense.receipt && expense.receipt.trim() !== '') {
+        return 'verified';
+    }
+    return 'no_receipt';
+}
+
+// Get status badge HTML
+function getStatusBadgeHTML(status: 'verified' | 'pending' | 'no_receipt'): string {
+    const badges = {
+        verified: '<span class="status-badge verified">✅ Verified</span>',
+        pending: '<span class="status-badge pending">⏳ Pending</span>',
+        no_receipt: '<span class="status-badge no_receipt">⚠️ No Receipt</span>'
+    };
+    return badges[status];
+}
+
 // Data fetching and processing
 async function fetchExpenseData(): Promise<void> {
     const statusEl = document.getElementById('status');
@@ -57,17 +110,23 @@ async function fetchExpenseData(): Promise<void> {
         statusEl.className = 'status loading';
         statusEl.textContent = 'Loading expense data...';
         
-        const response = await fetch(EXPENSES_API_URL + '?t=' + Date.now(), {
-            method: 'GET',
-            cache: 'no-cache'
-        });
+        // Fetch budget in parallel with expenses
+        const [expenseResponse, budget] = await Promise.all([
+            fetch(EXPENSES_API_URL + '?t=' + Date.now(), {
+                method: 'GET',
+                cache: 'no-cache'
+            }),
+            fetchBudget()
+        ]);
         
-        if (!response.ok) {
-            const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-            throw new Error(errorData.error || `Failed to fetch data: ${response.status} ${response.statusText}`);
+        currentBudget = budget;
+        
+        if (!expenseResponse.ok) {
+            const errorData = await expenseResponse.json().catch(() => ({ error: 'Unknown error' }));
+            throw new Error(errorData.error || `Failed to fetch data: ${expenseResponse.status} ${expenseResponse.statusText}`);
         }
         
-        const data: ExpenseResponse = await response.json();
+        const data: ExpenseResponse = await expenseResponse.json();
         
         if (data.expenses.length === 0) {
             throw new Error('No expense data found');
@@ -83,6 +142,10 @@ async function fetchExpenseData(): Promise<void> {
         updateTimeChart(data.expenses);
         updateTopPurposesChart(data.expenses);
         updateRecentExpenses(data.expenses);
+        
+        // New update functions
+        updateBudgetProgress(data.totalAmount);
+        updateRemainingBalance(data.totalAmount);
         
         statusEl.style.display = 'none';
         
@@ -103,7 +166,7 @@ async function fetchExpenseData(): Promise<void> {
         if (expenseTable) {
             expenseTable.innerHTML = `
                 <tr>
-                    <td colspan="7" style="text-align: center; padding: 20px; color: #999;">
+                    <td colspan="9" style="text-align: center; padding: 20px; color: #999;">
                         Unable to load expenses. Please check the server connection.
                     </td>
                 </tr>
@@ -188,6 +251,14 @@ function updateActiveFilters(): void {
     allButtons.forEach(btn => {
         if (btn.id === 'filterAll') {
             btn.classList.toggle('active', selectedCategory === null);
+        } else if (btn.id.startsWith('receiptFilter')) {
+            if (btn.id === 'receiptFilterAll') {
+                btn.classList.toggle('active', receiptFilter === 'all');
+            } else if (btn.id === 'receiptFilterWith') {
+                btn.classList.toggle('active', receiptFilter === 'with');
+            } else if (btn.id === 'receiptFilterWithout') {
+                btn.classList.toggle('active', receiptFilter === 'without');
+            }
         } else {
             const buttonText = btn.textContent || '';
             const isActive = selectedCategory && buttonText.includes(selectedCategory);
@@ -204,11 +275,32 @@ function updateExpenseTable(expenses: ProcessedExpense[], categoryFilter: string
     if (categoryFilter) {
         filteredExpenses = expenses.filter(exp => exp.category === categoryFilter);
     }
+
+    // Apply receipt filter
+    if (receiptFilter === 'with') {
+        filteredExpenses = filteredExpenses.filter(exp => exp.receipt && exp.receipt.trim() !== '');
+    } else if (receiptFilter === 'without') {
+        filteredExpenses = filteredExpenses.filter(exp => !exp.receipt || exp.receipt.trim() === '');
+    }
+
+    // Apply search filter
+    const term = searchQuery.trim().toLowerCase();
+    if (term) {
+        filteredExpenses = filteredExpenses.filter(exp => {
+            const haystack = [
+                exp.title,
+                exp.description,
+                exp.remarks,
+                exp.category
+            ].join(' ').toLowerCase();
+            return haystack.includes(term);
+        });
+    }
     
     if (filteredExpenses.length === 0) {
         tbody.innerHTML = `
             <tr>
-                <td colspan="7" style="text-align: center; padding: 20px; color: #999;">
+                <td colspan="9" style="text-align: center; padding: 20px; color: #999;">
                     No expenses found${categoryFilter ? ` in category: ${categoryFilter}` : ''}.
                 </td>
             </tr>
@@ -216,10 +308,34 @@ function updateExpenseTable(expenses: ProcessedExpense[], categoryFilter: string
         return;
     }
     
-    tbody.innerHTML = filteredExpenses.map(expense => {
-        const receiptCell = expense.receipt && expense.receipt.trim() !== '' 
-            ? `<a href="${expense.receipt}" target="_blank" rel="noopener noreferrer" class="receipt-link">View Receipt</a>`
+    tbody.innerHTML = filteredExpenses.map((expense, idx) => {
+        const receiptUrl = expense.receipt ? expense.receipt.trim() : '';
+        const receiptCell = receiptUrl !== '' 
+            ? `<a href="javascript:void(0)" onclick="openGallery('${receiptUrl.replace(/'/g, "\\'")}', 'Receipt - ${(expense.title || 'No title').replace(/'/g, "\\'")}')" class="receipt-link">View Receipt</a>`
             : '<span style="color: #999;">N/A</span>';
+        
+        // Check if invoice exists and has content
+        const invoiceValue = expense.invoice ? String(expense.invoice).trim() : '';
+        const invoiceCell = invoiceValue !== '' && invoiceValue !== 'undefined' && invoiceValue !== 'null'
+            ? `<a href="javascript:void(0)" onclick="openGallery('${invoiceValue.replace(/'/g, "\\'")}', 'Invoice - ${(expense.title || 'No title').replace(/'/g, "\\'")}')" class="receipt-link">View Invoice</a>`
+            : '<span style="color: #999;">N/A</span>';
+        
+        // Check if photos exists and has content - handle comma-separated multiple photos
+        const photosValue = expense.photos ? expense.photos.trim() : '';
+        let photosCell = '<span style="color: #999;">N/A</span>';
+        if (photosValue !== '') {
+            // Parse comma-separated photo URLs
+            const photoUrls = photosValue.split(',').map(url => url.trim()).filter(url => url !== '');
+            // Properly escape URLs for HTML attribute
+            const photoUrlsJson = JSON.stringify(photoUrls).replace(/"/g, '&quot;');
+            const photoTitle = (expense.title || 'No title').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+            photosCell = `<a href="javascript:void(0)" onclick="openGalleryMultiple(${photoUrlsJson}, '${photoTitle}')" class="receipt-link">View Photos (${photoUrls.length})</a>`;
+        }
+        
+        // Debug logging for first expense
+        if (idx === 0) {
+            console.log('First expense invoice field:', expense.invoice, 'invoiceValue:', invoiceValue);
+        }
         
         const displayDate = expense.expenseDate || expense.timestamp;
         
@@ -230,12 +346,168 @@ function updateExpenseTable(expenses: ProcessedExpense[], categoryFilter: string
                 <td><span class="category-badge">${expense.category || 'Uncategorized'}</span></td>
                 <td>${expense.description || '-'}</td>
                 <td><strong>${formatExpenseCurrency(expense.amount)}</strong></td>
+                <td>${invoiceCell}</td>
+                <td>${photosCell}</td>
                 <td>${receiptCell}</td>
                 <td>${expense.remarks || '-'}</td>
             </tr>
         `;
     }).join('');
 }
+
+// Build printable media blocks (links + inline image preview when possible)
+function buildMediaBlock(label: string, urls: string[]): string {
+    if (!urls || urls.length === 0) return '<span style="color: #999;">N/A</span>';
+
+    return urls.map((url, idx) => {
+        const original = url.trim();
+        const escapedOriginal = escapeHtml(original);
+        const directImage = toDirectImageUrl(original);
+        const escapedImage = escapeHtml(directImage);
+        const showImage = !!directImage && !isLikelyPdf(original);
+        const suffix = urls.length > 1 ? ` ${idx + 1}` : '';
+
+        const imageHtml = showImage ? `
+            <div style="margin-top: 6px;">
+                <img src="${escapedImage}" alt="${escapeHtml(label)}${suffix}" 
+                    style="max-height: 120px; max-width: 100%; object-fit: contain; border: 1px solid #eee; padding: 4px; border-radius: 4px;">
+            </div>
+        ` : '';
+
+        return `
+            <div style="margin-bottom: 8px;">
+                <strong>${escapeHtml(label)}${suffix}:</strong>
+                <a href="${escapedOriginal}" target="_blank" rel="noopener noreferrer">${escapedOriginal}</a>
+                ${imageHtml}
+            </div>
+        `;
+    }).join('');
+}
+
+// Download current Expense Records view as PDF/printable page
+function downloadExpensesPdf(): void {
+    if (!currentExpenseData) return;
+
+    let expenses = currentExpenseData.expenses;
+    if (selectedCategory) {
+        expenses = expenses.filter(exp => exp.category === selectedCategory);
+    }
+    if (receiptFilter === 'with') {
+        expenses = expenses.filter(exp => exp.receipt && exp.receipt.trim() !== '');
+    } else if (receiptFilter === 'without') {
+        expenses = expenses.filter(exp => !exp.receipt || exp.receipt.trim() === '');
+    }
+    const term = searchQuery.trim().toLowerCase();
+    if (term) {
+        expenses = expenses.filter(exp => {
+            const haystack = [
+                exp.title,
+                exp.description,
+                exp.remarks,
+                exp.category
+            ].join(' ').toLowerCase();
+            return haystack.includes(term);
+        });
+    }
+
+    if (expenses.length === 0) {
+        alert('No expenses to export for the current filter.');
+        return;
+    }
+
+    const rowsHtml = expenses.map(expense => {
+        const displayDate = expense.expenseDate || expense.timestamp;
+        const invoiceUrls = expense.invoice ? String(expense.invoice).split(',').map(u => u.trim()).filter(u => u !== '') : [];
+        const photoUrls = expense.photos ? expense.photos.split(',').map(u => u.trim()).filter(u => u !== '') : [];
+        const receiptUrls = expense.receipt ? [expense.receipt.trim()].filter(u => u !== '') : [];
+
+        const invoiceHtml = buildMediaBlock('Invoice', invoiceUrls);
+        const photoHtml = buildMediaBlock('Photo', photoUrls);
+        const receiptHtml = buildMediaBlock('Receipt', receiptUrls);
+
+        return `
+            <tr>
+                <td>${escapeHtml(formatExpenseDate(displayDate))}</td>
+                <td>${escapeHtml(expense.title || 'No title')}</td>
+                <td>${escapeHtml(expense.category || 'Uncategorized')}</td>
+                <td>${escapeHtml(expense.description || '-')}</td>
+                <td>${escapeHtml(formatExpenseCurrency(expense.amount))}</td>
+                <td>${invoiceHtml}</td>
+                <td>${photoHtml}</td>
+                <td>${receiptHtml}</td>
+            </tr>
+        `;
+    }).join('');
+
+    const printStyles = `
+        body { font-family: 'Inter', 'Segoe UI', Arial, sans-serif; padding: 20px; color: #2c3e50; }
+        h1 { margin: 0; }
+        .header { display: flex; flex-direction: column; align-items: center; text-align: center; margin-bottom: 14px; }
+        .logo { height: 60px; width: auto; }
+        .meta { color: #666; margin-bottom: 16px; font-size: 0.95rem; text-align: center; }
+        table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+        th, td { border: 1px solid #e1e4e8; padding: 8px; vertical-align: top; font-size: 0.9rem; word-break: break-word; white-space: pre-wrap; }
+        th { background: #f6f8fa; text-align: left; }
+        tr:nth-child(even) { background: #fafbfc; }
+        img { page-break-inside: avoid; }
+        @media print {
+            a { color: #000; text-decoration: underline; }
+        }
+    `;
+
+    const now = new Date();
+    const title = selectedCategory ? `Expense Records – ${selectedCategory}` : 'Expense Records';
+    const logoUrl = `${window.location.origin}/logo.png`;
+    const subtitle = 'Expenses Records of Cyclone Relief Fund';
+
+    const printableHtml = `
+        <!doctype html>
+        <html>
+            <head>
+                <title>${escapeHtml(title)}</title>
+                <style>${printStyles}</style>
+            </head>
+            <body>
+                <div class="header">
+                    <img src="${escapeHtml(logoUrl)}" alt="Logo" class="logo">
+                    <h1>${escapeHtml(title)}</h1>
+                    <div style="font-size: 1rem; color: #555; margin-top: 4px;">${escapeHtml(subtitle)}</div>
+                </div>
+                <div class="meta">Generated: ${escapeHtml(now.toLocaleString())}</div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Title</th>
+                            <th>Category</th>
+                            <th>Description</th>
+                            <th>Amount (LKR)</th>
+                            <th>Invoice</th>
+                            <th>Photos</th>
+                            <th>Receipt</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${rowsHtml}
+                    </tbody>
+                </table>
+            </body>
+        </html>
+    `;
+
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) return;
+    printWindow.document.open();
+    printWindow.document.write(printableHtml);
+    printWindow.document.close();
+    printWindow.focus();
+
+    // Give the browser a moment to render images before printing
+    setTimeout(() => {
+        printWindow.print();
+    }, 400);
+}
+
 
 // Update Receipt Status
 function updateReceiptStatus(expenses: ProcessedExpense[]): void {
@@ -271,6 +543,70 @@ function updateReceiptStatus(expenses: ProcessedExpense[]): void {
     }
     if (withoutReceiptCountEl) {
         withoutReceiptCountEl.textContent = `${withoutReceiptCount} expense${withoutReceiptCount !== 1 ? 's' : ''}`;
+    }
+}
+
+// Update Budget vs Spent Progress Bar
+function updateBudgetProgress(totalSpent: number): void {
+    if (currentBudget <= 0) {
+        // No budget available, hide or show message
+        const progressFill = document.getElementById('budgetProgressFill');
+        const spentLabel = document.getElementById('budgetSpentLabel');
+        const remainingLabel = document.getElementById('budgetRemainingLabel');
+        
+        if (progressFill) progressFill.style.width = '0%';
+        if (spentLabel) spentLabel.textContent = 'Spent: ' + formatExpenseCurrency(totalSpent);
+        if (remainingLabel) remainingLabel.textContent = 'Budget: Not available';
+        return;
+    }
+    
+    const spentPercentage = Math.min((totalSpent / currentBudget) * 100, 100);
+    const remaining = Math.max(0, currentBudget - totalSpent);
+    
+    const progressFill = document.getElementById('budgetProgressFill');
+    const spentLabel = document.getElementById('budgetSpentLabel');
+    const remainingLabel = document.getElementById('budgetRemainingLabel');
+    
+    if (progressFill) {
+        progressFill.style.width = `${spentPercentage}%`;
+        progressFill.textContent = `${spentPercentage.toFixed(1)}%`;
+    }
+    
+    if (spentLabel) {
+        spentLabel.textContent = `Spent: ${formatExpenseCurrency(totalSpent)}`;
+    }
+    
+    if (remainingLabel) {
+        remainingLabel.textContent = `Remaining: ${formatExpenseCurrency(remaining)}`;
+    }
+}
+
+// Update Remaining Balance Card
+function updateRemainingBalance(totalSpent: number): void {
+    const remainingBalanceEl = document.getElementById('remainingBalance');
+    const remainingBalanceStatusEl = document.getElementById('remainingBalanceStatus');
+    
+    if (!remainingBalanceEl || !remainingBalanceStatusEl) return;
+    
+    if (currentBudget <= 0) {
+        remainingBalanceEl.textContent = formatExpenseCurrency(0);
+        remainingBalanceStatusEl.textContent = 'Budget data unavailable';
+        remainingBalanceEl.classList.remove('over-budget');
+        return;
+    }
+    
+    const remaining = currentBudget - totalSpent;
+    
+    if (remaining < 0) {
+        // Over budget
+        remainingBalanceEl.textContent = formatExpenseCurrency(Math.abs(remaining));
+        remainingBalanceEl.classList.add('over-budget');
+        remainingBalanceStatusEl.textContent = 'Over Budget';
+    } else {
+        // Within budget
+        remainingBalanceEl.textContent = formatExpenseCurrency(remaining);
+        remainingBalanceEl.classList.remove('over-budget');
+        remainingBalanceStatusEl.textContent = 'Available';
     }
 }
 
@@ -429,6 +765,254 @@ function updateRecentExpenses(expenses: ProcessedExpense[]): void {
     }
 }
 
+// Check if URL is an image
+function isImageUrl(url: string): boolean {
+    if (!url) return false;
+    const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.svg'];
+    const urlLower = url.toLowerCase();
+    return imageExtensions.some(ext => urlLower.includes(ext)) || urlLower.includes('image');
+}
+
+// Check if URL is a Google Drive link
+function isGoogleDriveUrl(url: string): boolean {
+    if (!url) return false;
+    return url.includes('drive.google.com') || url.includes('docs.google.com');
+}
+
+// Check if URL likely points to a PDF
+function isLikelyPdf(url: string): boolean {
+    if (!url) return false;
+    const lower = url.toLowerCase();
+    return lower.includes('.pdf') || lower.includes('application/pdf');
+}
+
+// Extract file ID from Google Drive URL
+function extractGoogleDriveFileId(url: string): string | null {
+    // Match patterns like /file/d/FILE_ID or id=FILE_ID
+    const fileIdPatterns = [
+        /\/file\/d\/([a-zA-Z0-9_-]+)/,
+        /[?&]id=([a-zA-Z0-9_-]+)/,
+        /\/document\/d\/([a-zA-Z0-9_-]+)/,
+        /\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/
+    ];
+    
+    for (const pattern of fileIdPatterns) {
+        const match = url.match(pattern);
+        if (match && match[1]) {
+            return match[1];
+        }
+    }
+    
+    return null;
+}
+
+// Basic HTML escaping for printable content
+function escapeHtml(value: string): string {
+    return value
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+// Get a direct image-friendly URL when possible (e.g., for Google Drive images)
+function toDirectImageUrl(url: string): string {
+    if (!url) return '';
+    const trimmed = url.trim();
+    if (isGoogleDriveUrl(trimmed)) {
+        const fileId = extractGoogleDriveFileId(trimmed);
+        if (fileId && !isLikelyPdf(trimmed)) {
+            return `https://drive.google.com/uc?export=view&id=${fileId}`;
+        }
+    }
+    return trimmed;
+}
+
+// Store current gallery state
+let currentGalleryUrls: string[] = [];
+let currentGalleryIndex: number = 0;
+
+// Open gallery modal with single URL
+function openGallery(url: string, title: string = ''): void {
+    openGalleryMultiple([url], title);
+}
+
+// Open gallery modal with multiple URLs
+function openGalleryMultiple(urls: string[], _title: string = ''): void {
+    if (!urls || urls.length === 0) return;
+    
+    const modal = document.getElementById('galleryModal');
+    const modalContent = document.getElementById('galleryModalContent');
+    if (!modal || !modalContent) return;
+
+    // Store gallery state
+    currentGalleryUrls = urls;
+    currentGalleryIndex = 0;
+
+    // Prevent body scroll when modal is open
+    document.body.style.overflow = 'hidden';
+
+    // Load first image
+    loadGalleryImage(0);
+
+    modal.classList.add('active');
+}
+
+// Expose functions globally for onclick handlers
+(window as any).openGallery = openGallery;
+(window as any).openGalleryMultiple = openGalleryMultiple;
+(window as any).navigateGallery = navigateGallery;
+(window as any).closeGallery = closeGallery;
+(window as any).closeGalleryOnBackdrop = closeGalleryOnBackdrop;
+
+// Load specific image in gallery
+function loadGalleryImage(index: number): void {
+    if (index < 0 || index >= currentGalleryUrls.length) return;
+
+    currentGalleryIndex = index;
+    const url = currentGalleryUrls[index];
+    const modalContent = document.getElementById('galleryModalContent');
+    if (!modalContent) return;
+
+    // Build navigation HTML (only show if multiple images)
+    let navHtml = '';
+    if (currentGalleryUrls.length > 1) {
+        navHtml = `
+            <div class="gallery-nav prev" onclick="event.stopPropagation(); navigateGallery(-1)">&#10094;</div>
+            <div class="gallery-nav next" onclick="event.stopPropagation(); navigateGallery(1)">&#10095;</div>
+            <div style="position: absolute; top: 20px; left: 50%; transform: translateX(-50%); color: white; background: rgba(0,0,0,0.7); padding: 8px 16px; border-radius: 4px; font-size: 0.9rem;">
+                ${currentGalleryIndex + 1} / ${currentGalleryUrls.length}
+            </div>
+        `;
+    }
+
+    // Clean and prepare URLs
+    const cleanedUrl = (url || '').trim().replace(/,$/, '').trim();
+    const originalUrl = cleanedUrl;
+    const isDrive = isGoogleDriveUrl(cleanedUrl);
+    const fileId = isDrive ? extractGoogleDriveFileId(cleanedUrl) : null;
+
+    // Prefer direct image URL for Drive (works for images), fallback to preview for PDFs/other files
+    const directImageUrl = fileId ? `https://drive.google.com/uc?export=view&id=${fileId}` : cleanedUrl;
+    const previewUrl = fileId
+        ? `https://drive.google.com/file/d/${fileId}/preview`
+        : (isLikelyPdf(cleanedUrl) ? cleanedUrl : '');
+
+    // Escape URLs for inline HTML/JS
+    const escapedImageUrl = directImageUrl.replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const escapedOriginalUrl = originalUrl.replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const escapedPreviewUrl = previewUrl ? previewUrl.replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;') : '';
+
+    // Unique element IDs so inline handlers can find their elements
+    const imgId = `gallery-img-${index}-${Date.now()}`;
+    const errorDivId = `gallery-error-${index}-${Date.now()}`;
+    const previewContainerId = `gallery-preview-${index}-${Date.now()}`;
+    const iframeId = `gallery-iframe-${index}-${Date.now()}`;
+
+    const previewHtml = previewUrl ? `
+        <div id="${previewContainerId}" style="display: none; flex-direction: column; align-items: center; justify-content: center; width: 100%; height: 80vh;">
+            <iframe id="${iframeId}" src="" data-src="${escapedPreviewUrl}" frameborder="0" allow="autoplay" 
+                style="width: 90vw; height: 80vh; border: none; border-radius: 8px; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5); background: white;"></iframe>
+            <p style="margin-top: 12px; color: #ccc; font-size: 0.9rem; text-align: center;">Preview via embedded viewer. If blank, use the Open in New Tab link.</p>
+        </div>
+    ` : '';
+
+    modalContent.innerHTML = `
+        ${navHtml}
+        <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 400px; width: 100%;">
+            <img id="${imgId}" src="${escapedImageUrl}" alt="Image ${index + 1}" 
+                onclick="event.stopPropagation()" 
+                style="max-width: 100%; max-height: 90vh; object-fit: contain; border-radius: 8px; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5); display: block;"
+                onerror="
+                    (function() {
+                        const imgEl = document.getElementById('${imgId}');
+                        const previewEl = document.getElementById('${previewContainerId}');
+                        const errorEl = document.getElementById('${errorDivId}');
+                        if (imgEl) imgEl.style.display = 'none';
+                        if (previewEl) {
+                            previewEl.style.display = 'flex';
+                            const iframeEl = previewEl.querySelector('iframe');
+                            if (iframeEl && !iframeEl.getAttribute('src')) {
+                                iframeEl.setAttribute('src', '${escapedPreviewUrl}');
+                            }
+                            return;
+                        }
+                        if (errorEl) errorEl.style.display = 'flex';
+                    })();
+                "
+                onload="
+                    (function() {
+                        const errorEl = document.getElementById('${errorDivId}');
+                        const previewEl = document.getElementById('${previewContainerId}');
+                        if (errorEl) errorEl.style.display = 'none';
+                        if (previewEl) previewEl.style.display = 'none';
+                    })();
+                ">
+            ${previewHtml}
+            <div id="${errorDivId}" style="display: none; flex-direction: column; align-items: center; justify-content: center; padding: 40px; color: white; text-align: center; max-width: 500px;">
+                <p style="margin-bottom: 20px; font-size: 1.1rem;">Unable to display this file directly.</p>
+                <p style="margin-bottom: 15px; font-size: 0.9rem; color: #ccc;">If this is a Google Drive file, make sure it is shared as &quot;Anyone with the link can view&quot;.</p>
+                <a href="${escapedOriginalUrl}" target="_blank" rel="noopener noreferrer" 
+                   onclick="event.stopPropagation()"
+                   style="color: #3498db; font-size: 1.1rem; text-decoration: none; padding: 12px 24px; border: 2px solid #3498db; border-radius: 4px; background: rgba(255,255,255,0.1); transition: all 0.3s; display: inline-block;">
+                    Open in New Tab
+                </a>
+            </div>
+        </div>
+    `;
+}
+
+// Navigate gallery (prev/next)
+function navigateGallery(direction: number): void {
+    const newIndex = currentGalleryIndex + direction;
+    if (newIndex >= 0 && newIndex < currentGalleryUrls.length) {
+        loadGalleryImage(newIndex);
+    }
+}
+
+// Handle gallery error (fallback)
+function handleGalleryError(originalUrl: string): void {
+    const modalContent = document.getElementById('galleryModalContent');
+    if (!modalContent) return;
+    
+    modalContent.innerHTML = `
+        <div class="gallery-embed">
+            <p style="color: white; margin-bottom: 20px; font-size: 1.1rem;">Unable to preview this file</p>
+            <a href="${originalUrl}" target="_blank" rel="noopener noreferrer" style="color: #3498db; font-size: 1.2rem; text-decoration: none; padding: 15px 30px; border: 2px solid #3498db; border-radius: 4px; transition: all 0.3s; display: inline-block;">
+                Open in New Tab
+            </a>
+        </div>
+    `;
+}
+
+// Close gallery modal
+function closeGallery(): void {
+    const modal = document.getElementById('galleryModal');
+    if (!modal) return;
+    
+    modal.classList.remove('active');
+    document.body.style.overflow = '';
+    
+    // Clear content after animation
+    setTimeout(() => {
+        const modalContent = document.getElementById('galleryModalContent');
+        if (modalContent) modalContent.innerHTML = '';
+    }, 300);
+}
+
+// Close gallery when clicking on backdrop
+function closeGalleryOnBackdrop(event: MouseEvent): void {
+    const modal = document.getElementById('galleryModal');
+    const modalContent = document.getElementById('galleryModalContent');
+    if (!modal || !modalContent) return;
+    
+    // Close if clicking on the backdrop (not on the content)
+    if (event.target === modal) {
+        closeGallery();
+    }
+}
+
 // Initialize filter handlers
 document.addEventListener('DOMContentLoaded', () => {
     const filterAllBtn = document.getElementById('filterAll');
@@ -441,9 +1025,56 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
     }
+
+    // Close gallery with Escape key, navigate with arrow keys
+    document.addEventListener('keydown', (event: KeyboardEvent) => {
+        const modal = document.getElementById('galleryModal');
+        if (modal && modal.classList.contains('active')) {
+            if (event.key === 'Escape') {
+                closeGallery();
+            } else if (event.key === 'ArrowLeft') {
+                navigateGallery(-1);
+            } else if (event.key === 'ArrowRight') {
+                navigateGallery(1);
+            }
+        }
+    });
+
+    const receiptFilterAll = document.getElementById('receiptFilterAll');
+    const receiptFilterWith = document.getElementById('receiptFilterWith');
+    const receiptFilterWithout = document.getElementById('receiptFilterWithout');
+    if (receiptFilterAll && receiptFilterWith && receiptFilterWithout) {
+        receiptFilterAll.addEventListener('click', () => {
+            receiptFilter = 'all';
+            updateActiveFilters();
+            if (currentExpenseData) updateExpenseTable(currentExpenseData.expenses, selectedCategory);
+        });
+        receiptFilterWith.addEventListener('click', () => {
+            receiptFilter = 'with';
+            updateActiveFilters();
+            if (currentExpenseData) updateExpenseTable(currentExpenseData.expenses, selectedCategory);
+        });
+        receiptFilterWithout.addEventListener('click', () => {
+            receiptFilter = 'without';
+            updateActiveFilters();
+            if (currentExpenseData) updateExpenseTable(currentExpenseData.expenses, selectedCategory);
+        });
+    }
+
+    const searchInput = document.getElementById('searchExpenses') as HTMLInputElement | null;
+    if (searchInput) {
+        searchInput.addEventListener('input', () => {
+            searchQuery = searchInput.value || '';
+            if (currentExpenseData) updateExpenseTable(currentExpenseData.expenses, selectedCategory);
+        });
+    }
+
+    const downloadPdfBtn = document.getElementById('downloadExpensesPdf');
+    if (downloadPdfBtn) {
+        downloadPdfBtn.addEventListener('click', () => downloadExpensesPdf());
+    }
 });
 
 // Initialization
 fetchExpenseData();
 setInterval(fetchExpenseData, EXPENSES_REFRESH_INTERVAL);
-

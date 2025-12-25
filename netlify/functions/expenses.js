@@ -64,7 +64,9 @@ function processExpenses(expenses) {
         description: ['description', 'desc', 'details'],
         amount: ['amount', 'amount (lkr)', 'amount(lkr)', 'value', 'lkr'],
         receipt: ['receipt', 'receipt link', 'receipt_url', 'link', 'url', 'proof'],
-        remarks: ['remarks', 'remark', 'notes', 'note']
+        remarks: ['remarks', 'remark', 'notes', 'note'],
+        invoice: ['invoice', 'invoice link', 'invoice_url', 'invoice link', 'invoice url'],
+        photos: ['photos', 'photos (if available)', 'photos (if available)', 'photos if available', 'images', 'images (if available)']
     };
     const headers = Object.keys(expenses[0] || {});
     const columns = {
@@ -75,11 +77,39 @@ function processExpenses(expenses) {
         description: null,
         amount: null,
         receipt: null,
-        remarks: null
+        remarks: null,
+        invoice: null,
+        photos: null
     };
     Object.keys(possibleColumns).forEach(key => {
-        const found = headers.find(h => possibleColumns[key].some(p => h.toLowerCase().includes(p.toLowerCase())));
+        let found = headers.find(h => {
+            // Normalize header: lowercase, trim, remove extra spaces
+            const headerNormalized = h.toLowerCase().trim().replace(/\s+/g, ' ');
+            return possibleColumns[key].some(p => {
+                // Normalize pattern: lowercase, trim, remove extra spaces
+                const patternNormalized = p.toLowerCase().trim().replace(/\s+/g, ' ');
+                // Try exact match first, then includes (both normalized)
+                return headerNormalized === patternNormalized || headerNormalized.includes(patternNormalized);
+            });
+        });
+        // Fallback: for invoice, try to match any header containing "invoice"
+        if (!found && key === 'invoice') {
+            found = headers.find(h => h.toLowerCase().trim().includes('invoice'));
+        }
+        // Fallback: for photos, try to match any header containing "photo"
+        if (!found && key === 'photos') {
+            found = headers.find(h => h.toLowerCase().trim().includes('photo'));
+        }
         columns[key] = found || null;
+        // Debug logging for invoice column
+        if (key === 'invoice') {
+            if (found) {
+                console.log('Invoice column found:', found);
+            }
+            else {
+                console.log('Invoice column not found. Available headers:', headers);
+            }
+        }
     });
     let totalAmount = 0;
     const processedExpenses = [];
@@ -94,6 +124,12 @@ function processExpenses(expenses) {
                 categories[category] = 0;
             }
             categories[category] += amount;
+            const invoiceValue = columns.invoice ? (expense[columns.invoice] || '').trim() : '';
+            const photosValue = columns.photos ? (expense[columns.photos] || '').trim() : '';
+            // Debug first row for invoice
+            if (index === 0 && invoiceValue) {
+                console.log('First expense invoice value:', invoiceValue);
+            }
             processedExpenses.push({
                 timestamp: columns.timestamp ? expense[columns.timestamp] : `Row ${index + 2}`,
                 expenseDate: columns.expenseDate ? expense[columns.expenseDate] : '',
@@ -102,7 +138,9 @@ function processExpenses(expenses) {
                 description: columns.description ? expense[columns.description] : '',
                 amount: amount,
                 receipt: columns.receipt ? expense[columns.receipt] : '',
-                remarks: columns.remarks ? expense[columns.remarks] : ''
+                remarks: columns.remarks ? expense[columns.remarks] : '',
+                invoice: invoiceValue,
+                photos: photosValue
             });
         }
     });

@@ -150,10 +150,146 @@
             color: #3498db;
             text-decoration: none;
             font-weight: 500;
+            cursor: pointer;
         }
 
         .receipt-link:hover {
             text-decoration: underline;
+        }
+
+        /* Image Gallery Modal */
+        .gallery-modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.95);
+            animation: fadeIn 0.3s;
+            overflow: auto;
+        }
+
+        .gallery-modal.active {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .gallery-modal-close {
+            position: absolute;
+            top: 20px;
+            right: 35px;
+            color: #f1f1f1;
+            font-size: 40px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: color 0.2s;
+            z-index: 1001;
+        }
+
+        .gallery-modal-close:hover {
+            color: #fff;
+        }
+
+        .gallery-modal-content {
+            max-width: 90%;
+            max-height: 90vh;
+            margin: 20px auto;
+            display: block;
+        }
+
+        .gallery-modal-content img {
+            max-width: 100%;
+            max-height: 90vh;
+            object-fit: contain;
+            border-radius: 8px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+        }
+
+        .gallery-modal-content iframe {
+            width: 90vw;
+            height: 90vh;
+            border: none;
+            border-radius: 8px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+            background: white;
+        }
+
+        .gallery-modal-content .gallery-embed {
+            width: 90vw;
+            height: 90vh;
+            border-radius: 8px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+            background: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .gallery-modal-content .gallery-embed a {
+            color: #3498db;
+            font-size: 1.2rem;
+            text-decoration: none;
+            padding: 15px 30px;
+            border: 2px solid #3498db;
+            border-radius: 4px;
+            transition: all 0.3s;
+        }
+
+        .gallery-modal-content .gallery-embed a:hover {
+            background: #3498db;
+            color: white;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        .gallery-nav {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #f1f1f1;
+            font-size: 30px;
+            font-weight: bold;
+            padding: 16px;
+            cursor: pointer;
+            user-select: none;
+            background: rgba(0, 0, 0, 0.5);
+            border-radius: 4px;
+            transition: background 0.3s;
+        }
+
+        .gallery-nav:hover {
+            background: rgba(0, 0, 0, 0.8);
+        }
+
+        .gallery-nav.prev {
+            left: 20px;
+        }
+
+        .gallery-nav.next {
+            right: 20px;
+        }
+
+        @media (max-width: 768px) {
+            .gallery-nav {
+                font-size: 24px;
+                padding: 12px;
+            }
+            
+            .gallery-nav.prev {
+                left: 10px;
+            }
+            
+            .gallery-nav.next {
+                right: 10px;
+            }
         }
 
         .category-badge {
@@ -396,6 +532,76 @@
             border-color: #3498db;
         }
 
+        /* Budget vs Spent Progress Bar */
+        .budget-progress-container {
+            margin-top: 20px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 4px;
+        }
+
+        .budget-progress-bar {
+            height: 30px;
+            background: #ecf0f1;
+            border-radius: 4px;
+            overflow: hidden;
+            margin: 15px 0;
+            border: 1px solid #ddd;
+            position: relative;
+        }
+
+        .budget-progress-fill {
+            height: 100%;
+            background: #3498db;
+            transition: width 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 600;
+            font-size: 0.85rem;
+        }
+
+        .budget-progress-labels {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 10px;
+            font-size: 0.9rem;
+            color: #666;
+        }
+
+        .budget-progress-label {
+            font-weight: 500;
+        }
+
+        /* Verification Status Badges */
+        .status-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 0.85rem;
+            font-weight: 500;
+        }
+
+        .status-badge.verified {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .status-badge.pending {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .status-badge.no_receipt {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .card-value.over-budget {
+            color: #e74c3c;
+        }
+
         @media (max-width: 768px) {
             .logo-container img {
                 max-height: 100px;
@@ -475,6 +681,25 @@
                 <div class="card-value" id="withoutReceiptAmount">LKR 0</div>
                 <div style="font-size: 0.85rem; color: #666; margin-top: 5px;" id="withoutReceiptCount">0 expenses</div>
             </div>
+            <div class="card">
+                <div class="card-title">Remaining Balance</div>
+                <div class="card-value" id="remainingBalance">LKR 0</div>
+                <div style="font-size: 0.85rem; color: #666; margin-top: 5px;" id="remainingBalanceStatus">Loading...</div>
+            </div>
+        </div>
+
+        <!-- Budget vs Spent Progress Bar -->
+        <div class="section">
+            <h2>Budget vs Spent</h2>
+            <div class="budget-progress-container">
+                <div class="budget-progress-bar">
+                    <div class="budget-progress-fill" id="budgetProgressFill" style="width: 0%;">0%</div>
+                </div>
+                <div class="budget-progress-labels">
+                    <div class="budget-progress-label" id="budgetSpentLabel">Spent: LKR 0</div>
+                    <div class="budget-progress-label" id="budgetRemainingLabel">Remaining: LKR 0</div>
+                </div>
+            </div>
         </div>
 
         <div class="section">
@@ -505,37 +730,23 @@
         </div>
 
         <div class="section">
-            <h2>Recent 5 Expenses</h2>
-            <div id="lastUpdatedRecent" style="margin-bottom: 15px; color: #666; font-size: 0.9rem;"></div>
-            <table>
-                <thead>
-                    <tr>
-                        <th>Date</th>
-                        <th>Title</th>
-                        <th>Category</th>
-                        <th>Amount (LKR)</th>
-                        <th>Receipt</th>
-                    </tr>
-                </thead>
-                <tbody id="recentExpenseTable">
-                    <tr>
-                        <td colspan="5" style="text-align: center; padding: 20px; color: #999;">
-                            Loading recent expenses...
-                        </td>
-                    </tr>
-                </tbody>
-            </table>
-        </div>
-
-        <div class="section">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
                 <h2 style="margin: 0;">Expense Records</h2>
+                <button id="downloadExpensesPdf" class="filter-button" style="margin-left: 10px;">Download PDF</button>
             </div>
             <div id="lastUpdated" style="margin-bottom: 15px; color: #666; font-size: 0.9rem;"></div>
             
-            <div class="filter-controls">
-                <button class="filter-button active" id="filterAll">All Categories</button>
-                <!-- Category filters will be added dynamically -->
+            <div class="filter-controls" style="flex-wrap: wrap; gap: 10px;">
+                <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                    <button class="filter-button active" id="filterAll">All Categories</button>
+                    <!-- Category filters will be added dynamically -->
+                </div>
+                <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+                    <button class="filter-button active" id="receiptFilterAll">All Receipts</button>
+                    <button class="filter-button" id="receiptFilterWith">With Receipt</button>
+                    <button class="filter-button" id="receiptFilterWithout">Without Receipt</button>
+                    <input type="text" id="searchExpenses" placeholder="Search title/description/remarks" style="padding: 8px 10px; min-width: 240px; border: 1px solid #dfe6e9; border-radius: 6px; font-size: 0.95rem;">
+                </div>
             </div>
             
             <table>
@@ -546,13 +757,15 @@
                         <th>Category</th>
                         <th>Description</th>
                         <th>Amount (LKR)</th>
+                        <th>Invoice</th>
+                        <th>Photos</th>
                         <th>Receipt</th>
                         <th>Remarks</th>
                     </tr>
                 </thead>
                 <tbody id="expenseTable">
                     <tr>
-                        <td colspan="7" style="text-align: center; padding: 20px; color: #999;">
+                        <td colspan="9" style="text-align: center; padding: 20px; color: #999;">
                             Loading expenses...
                         </td>
                     </tr>
@@ -563,7 +776,12 @@
         <div id="status" class="status loading" style="display: none;">Loading expense data...</div>
     </div>
 
+    <!-- Image Gallery Modal -->
+    <div id="galleryModal" class="gallery-modal" onclick="closeGalleryOnBackdrop(event)">
+        <span class="gallery-modal-close" onclick="closeGallery()">&times;</span>
+        <div class="gallery-modal-content" id="galleryModalContent"></div>
+    </div>
+
     <script src="expenses.js"></script>
 </body>
 </html>
-
