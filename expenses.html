@@ -368,7 +368,7 @@
         .line-chart-container {
             position: relative;
             width: 100%;
-            height: 300px;
+            height: 350px;
             margin-top: 20px;
         }
 
@@ -378,8 +378,9 @@
             height: 250px;
             border-bottom: 2px solid #ddd;
             border-left: 2px solid #ddd;
-            padding: 10px;
+            padding: 10px 10px 60px 10px;
             position: relative;
+            overflow: visible;
         }
 
         .line-chart-point {
@@ -387,8 +388,10 @@
             display: flex;
             flex-direction: column;
             align-items: center;
+            justify-content: flex-end;
             position: relative;
             margin: 0 5px;
+            height: 100%;
         }
 
         .line-chart-bar {
@@ -397,6 +400,7 @@
             border-radius: 4px 4px 0 0;
             min-height: 5px;
             transition: all 0.3s ease;
+            flex-shrink: 0;
         }
 
         .line-chart-bar:hover {
@@ -406,13 +410,22 @@
         .line-chart-label {
             font-size: 0.75rem;
             color: #666;
-            margin-top: 5px;
             text-align: center;
-            transform: rotate(-45deg);
-            transform-origin: top left;
             white-space: nowrap;
-            max-width: 60px;
-            overflow: hidden;
+            width: 100%;
+            padding: 0 4px;
+            box-sizing: border-box;
+            transform: rotate(-45deg);
+            transform-origin: center center;
+            position: absolute;
+            bottom: -50px;
+            left: 50%;
+            margin-left: -50%;
+            height: 50px;
+            display: flex;
+            align-items: flex-start;
+            justify-content: center;
+            overflow: visible;
         }
 
         .line-chart-value {
@@ -494,7 +507,17 @@
             }
 
             .line-chart-container {
-                height: 250px;
+                height: 320px;
+            }
+            
+            .line-chart {
+                padding: 10px 10px 50px 10px;
+            }
+            
+            .line-chart-label {
+                bottom: -45px;
+                height: 45px;
+                font-size: 0.7rem;
             }
 
             .pie-segment {

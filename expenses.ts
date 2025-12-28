@@ -626,8 +626,12 @@ function updateTimeChart(expenses: ProcessedExpense[]): void {
             const date = new Date(dateStr);
             if (isNaN(date.getTime())) return;
             
-            // Format as YYYY-MM-DD for grouping
-            const dateKey = date.toISOString().split('T')[0];
+            // Format as YYYY-MM-DD for grouping using local timezone (not UTC)
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            const dateKey = `${year}-${month}-${day}`;
+            
             if (!expensesByDate[dateKey]) {
                 expensesByDate[dateKey] = 0;
             }
@@ -655,12 +659,15 @@ function updateTimeChart(expenses: ProcessedExpense[]): void {
             <div class="line-chart">
                 ${displayDates.map((date, index) => {
                     const amount = displayAmounts[index];
-                    const height = (amount / displayMax) * 100;
-                    const formattedDate = new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                    const heightPercent = displayMax > 0 ? (amount / displayMax) * 100 : 0;
+                    // Parse YYYY-MM-DD and format using local timezone
+                    const [year, month, day] = date.split('-').map(Number);
+                    const dateObj = new Date(year, month - 1, day); // month is 0-indexed
+                    const formattedDate = dateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
                     return `
                         <div class="line-chart-point">
                             <div class="line-chart-value">${formatExpenseCurrency(amount)}</div>
-                            <div class="line-chart-bar" style="height: ${height}%;"></div>
+                            <div class="line-chart-bar" style="height: ${heightPercent}%;"></div>
                             <div class="line-chart-label">${formattedDate}</div>
                         </div>
                     `;
