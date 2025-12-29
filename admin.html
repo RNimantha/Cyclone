@@ -557,19 +557,51 @@
         }
 
         // Photo Gallery Management
+        const PHOTO_PAGE_SIZE = 10;
+
+        async function fetchPhotosInPages(pageSize = PHOTO_PAGE_SIZE) {
+            const chunk = Math.max(Math.min(pageSize, 20), 1);
+            const allPhotos = [];
+            let offset = 0;
+
+            while (true) {
+                const response = await fetch(`/api/photos?limit=${chunk}&offset=${offset}`);
+                let data = null;
+
+                try {
+                    data = await response.json();
+                } catch (_err) {
+                    // If parsing fails, fall back to generic error handling below
+                }
+
+                if (!response.ok) {
+                    const errorMessage = data?.error || `Failed to fetch photos (${response.status})`;
+                    throw new Error(errorMessage);
+                }
+
+                const photos = data?.photos || [];
+                allPhotos.push(...photos);
+
+                const total = typeof data?.total === 'number' ? data.total : undefined;
+                offset += photos.length;
+
+                if (photos.length < chunk || (total !== undefined && offset >= total)) {
+                    break;
+                }
+
+                // Defensive: avoid runaway loops if the API misbehaves
+                if (offset > 1000) break;
+            }
+
+            return allPhotos;
+        }
+
         async function loadPhotos() {
             const photosGrid = document.getElementById('photosGrid');
             if (!photosGrid) return;
 
             try {
-                const response = await fetch('/api/photos');
-                if (!response.ok) {
-                    const errorData = await response.json().catch(() => ({ error: 'Failed to fetch photos' }));
-                    throw new Error(errorData.error || `Failed to fetch photos (${response.status})`);
-                }
-                
-                const data = await response.json();
-                const photos = data.photos || [];
+                const photos = await fetchPhotosInPages();
 
                 if (photos.length === 0) {
                     photosGrid.innerHTML = '<div class="no-data">No photos added yet. Add your first photo above!</div>';
@@ -643,8 +675,8 @@
             }
         }
 
-        // Compress image function - more aggressive compression
-        function compressImage(file, maxWidth = 1200, maxHeight = 1200, quality = 0.75) {
+        // Compress image function - tuned to keep payloads small for API limits
+        function compressImage(file, maxWidth = 1000, maxHeight = 1000, quality = 0.7) {
             return new Promise((resolve, reject) => {
                 const reader = new FileReader();
                 reader.onload = (e) => {
@@ -904,4 +936,3 @@
     </script>
 </body>
 </html>
-

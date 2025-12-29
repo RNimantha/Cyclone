@@ -777,6 +777,44 @@
         setInterval(loadVisitorStatistics, 60000);
 
         // Photo Gallery
+        const PHOTO_PAGE_SIZE = 10;
+
+        async function fetchGalleryPhotos(pageSize = PHOTO_PAGE_SIZE) {
+            const chunk = Math.max(Math.min(pageSize, 20), 1);
+            const allPhotos = [];
+            let offset = 0;
+
+            while (true) {
+                const response = await fetch(`/api/photos?limit=${chunk}&offset=${offset}`);
+                let data = null;
+
+                try {
+                    data = await response.json();
+                } catch (_err) {
+                    // Ignore parse issues; handled below when response.ok is checked
+                }
+
+                if (!response.ok) {
+                    const errorMessage = data?.error || `Failed to fetch photos (${response.status})`;
+                    throw new Error(errorMessage);
+                }
+
+                const photos = data?.photos || [];
+                allPhotos.push(...photos);
+
+                const total = typeof data?.total === 'number' ? data.total : undefined;
+                offset += photos.length;
+
+                if (photos.length < chunk || (total !== undefined && offset >= total)) {
+                    break;
+                }
+
+                if (offset > 1000) break;
+            }
+
+            return allPhotos;
+        }
+
         async function loadPhotoGallery() {
             const galleryContainer = document.getElementById('photoGallery');
             const gallerySection = document.getElementById('photoGallerySection');
@@ -784,11 +822,7 @@
             if (!galleryContainer || !gallerySection) return;
 
             try {
-                const response = await fetch('/api/photos');
-                if (!response.ok) throw new Error('Failed to fetch photos');
-                
-                const data = await response.json();
-                const photos = data.photos || [];
+                const photos = await fetchGalleryPhotos();
 
                 if (photos.length === 0) {
                     gallerySection.style.display = 'none';

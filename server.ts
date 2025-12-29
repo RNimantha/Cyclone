@@ -486,12 +486,19 @@ app.get('/api/photos', async (_req: Request, res: Response): Promise<void> => {
             return;
         }
 
+        const limit = Math.min(
+            Math.max(parseInt((_req.query.limit as string) || '10', 10) || 10, 1),
+            20
+        );
+        const offset = Math.max(parseInt((_req.query.offset as string) || '0', 10) || 0, 0);
+
         const response = await fetch(
-            `${SUPABASE_URL}/rest/v1/gallery_photos?select=*&order=display_order.asc,created_at.desc`,
+            `${SUPABASE_URL}/rest/v1/gallery_photos?select=*&order=display_order.asc&order=created_at.desc&limit=${limit}&offset=${offset}`,
             {
                 headers: {
                     'apikey': SUPABASE_ANON_KEY,
                     'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+                    'Prefer': 'count=exact',
                 },
             }
         );
@@ -508,7 +515,9 @@ app.get('/api/photos', async (_req: Request, res: Response): Promise<void> => {
         }
 
         const photos = await response.json();
-        res.json({ photos });
+        const contentRange = response.headers.get('content-range');
+        const total = contentRange ? parseInt(contentRange.split('/')[1], 10) : undefined;
+        res.json({ photos, total, limit, offset });
     } catch (error) {
         console.error('Photos API error:', error);
         res.status(500).json({ error: error instanceof Error ? error.message : 'Internal server error' });

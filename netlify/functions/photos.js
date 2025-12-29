@@ -19,23 +19,51 @@ export const handler = async (event) => {
             body: '',
         };
     }
+    // Check Supabase configuration
+    if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+        console.error('Missing Supabase environment variables');
+        return {
+            statusCode: 500,
+            headers,
+            body: JSON.stringify({
+                error: 'Supabase not configured. Please set SUPABASE_URL and SUPABASE_ANON_KEY environment variables in Netlify.',
+                photos: []
+            }),
+        };
+    }
     try {
         if (event.httpMethod === 'GET') {
+            const queryParams = event.queryStringParameters || {};
+            const limit = Math.min(Math.max(parseInt(queryParams.limit || '10', 10) || 10, 1), 20);
+            const offset = Math.max(parseInt(queryParams.offset || '0', 10) || 0, 0);
             // Fetch all photos ordered by display_order
-            const response = await fetch(`${SUPABASE_URL}/rest/v1/gallery_photos?select=*&order=display_order.asc,created_at.desc`, {
+            const response = await fetch(`${SUPABASE_URL}/rest/v1/gallery_photos?select=*&order=display_order.asc&order=created_at.desc&limit=${limit}&offset=${offset}`, {
                 headers: {
                     'apikey': SUPABASE_ANON_KEY,
                     'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+                    'Prefer': 'count=exact',
                 },
             });
             if (!response.ok) {
-                throw new Error(`Supabase error: ${response.statusText}`);
+                // If table doesn't exist (404), return empty array instead of error
+                if (response.status === 404 || response.status === 400) {
+                    console.warn('Gallery photos table may not exist yet');
+                    return {
+                        statusCode: 200,
+                        headers,
+                        body: JSON.stringify({ photos: [] }),
+                    };
+                }
+                const errorText = await response.text().catch(() => 'Unknown error');
+                throw new Error(`Supabase error (${response.status}): ${errorText}`);
             }
             const photos = await response.json();
+            const contentRange = response.headers.get('content-range');
+            const total = contentRange ? parseInt(contentRange.split('/')[1], 10) : undefined;
             return {
                 statusCode: 200,
                 headers,
-                body: JSON.stringify({ photos }),
+                body: JSON.stringify({ photos, total, limit, offset }),
             };
         }
         if (event.httpMethod === 'POST') {

@@ -361,10 +361,13 @@ app.get('/api/photos', async (_req, res) => {
             });
             return;
         }
-        const response = await fetch(`${SUPABASE_URL}/rest/v1/gallery_photos?select=*&order=display_order.asc,created_at.desc`, {
+        const limit = Math.min(Math.max(parseInt(_req.query.limit || '10', 10) || 10, 1), 20);
+        const offset = Math.max(parseInt(_req.query.offset || '0', 10) || 0, 0);
+        const response = await fetch(`${SUPABASE_URL}/rest/v1/gallery_photos?select=*&order=display_order.asc&order=created_at.desc&limit=${limit}&offset=${offset}`, {
             headers: {
                 'apikey': SUPABASE_ANON_KEY,
                 'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+                'Prefer': 'count=exact',
             },
         });
         if (!response.ok) {
@@ -378,7 +381,9 @@ app.get('/api/photos', async (_req, res) => {
             throw new Error(`Supabase error (${response.status}): ${response.statusText}`);
         }
         const photos = await response.json();
-        res.json({ photos });
+        const contentRange = response.headers.get('content-range');
+        const total = contentRange ? parseInt(contentRange.split('/')[1], 10) : undefined;
+        res.json({ photos, total, limit, offset });
     }
     catch (error) {
         console.error('Photos API error:', error);
