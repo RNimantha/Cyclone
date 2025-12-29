@@ -95,3 +95,40 @@ CREATE POLICY "Allow public insert on login_attempts" ON login_attempts
 CREATE POLICY "Allow public select on login_attempts" ON login_attempts
     FOR SELECT USING (true);
 
+-- Create gallery_photos table
+CREATE TABLE IF NOT EXISTS gallery_photos (
+    id BIGSERIAL PRIMARY KEY,
+    url TEXT NOT NULL,
+    caption TEXT,
+    display_order INTEGER DEFAULT 0,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Create indexes for gallery_photos
+CREATE INDEX IF NOT EXISTS idx_gallery_photos_display_order ON gallery_photos(display_order);
+CREATE INDEX IF NOT EXISTS idx_gallery_photos_created_at ON gallery_photos(created_at DESC);
+
+-- Enable Row Level Security for gallery_photos
+ALTER TABLE gallery_photos ENABLE ROW LEVEL SECURITY;
+
+-- Drop existing policies if they exist
+DROP POLICY IF EXISTS "Allow public select on gallery_photos" ON gallery_photos;
+DROP POLICY IF EXISTS "Allow public insert on gallery_photos" ON gallery_photos;
+DROP POLICY IF EXISTS "Allow public update on gallery_photos" ON gallery_photos;
+DROP POLICY IF EXISTS "Allow public delete on gallery_photos" ON gallery_photos;
+
+-- Create policies to allow public read, but only authenticated admin for write
+-- For now, we'll allow public write (you can restrict this later with proper auth)
+CREATE POLICY "Allow public select on gallery_photos" ON gallery_photos
+    FOR SELECT USING (true);
+
+CREATE POLICY "Allow public insert on gallery_photos" ON gallery_photos
+    FOR INSERT WITH CHECK (true);
+
+CREATE POLICY "Allow public update on gallery_photos" ON gallery_photos
+    FOR UPDATE USING (true);
+
+CREATE POLICY "Allow public delete on gallery_photos" ON gallery_photos
+    FOR DELETE USING (true);
+

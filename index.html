@@ -252,6 +252,36 @@
             min-width: 140px;
         }
 
+        .gallery-photo-item {
+            position: relative;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            cursor: pointer;
+            background: #f8f9fa;
+        }
+
+        .gallery-photo-item:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+        }
+
+        .gallery-photo-item img {
+            width: 100%;
+            height: 280px;
+            object-fit: cover;
+            display: block;
+        }
+
+        .gallery-photo-caption {
+            padding: 15px;
+            background: white;
+            color: #2c3e50;
+            font-size: 0.95rem;
+            line-height: 1.5;
+        }
+
         table {
             width: 100%;
             border-collapse: collapse;
@@ -370,6 +400,20 @@
                 font-size: 2rem;
             }
 
+            .completion-banner h2 {
+                font-size: 1.4rem;
+            }
+
+            .completion-banner p {
+                font-size: 1rem;
+                padding: 0 10px;
+            }
+
+            .completion-banner a {
+                font-size: 0.9rem;
+                padding: 10px 20px;
+            }
+
             table {
                 font-size: 0.85rem;
             }
@@ -382,6 +426,10 @@
                 min-width: 100px;
                 display: block;
                 margin-bottom: 5px;
+            }
+
+            .gallery-photo-item img {
+                height: 200px;
             }
         }
 
@@ -443,6 +491,29 @@
                 </div>
             </div>
         </header>
+
+        <!-- Program Completion Banner -->
+        <div class="completion-banner" style="background: linear-gradient(135deg, #27ae60 0%, #229954 100%); color: white; padding: 30px; border-radius: 8px; margin-bottom: 30px; text-align: center; box-shadow: 0 4px 15px rgba(39, 174, 96, 0.3);">
+            <div style="font-size: 2rem; margin-bottom: 15px;">🎉</div>
+            <h2 style="color: white; font-size: 1.8rem; margin-bottom: 15px; font-weight: 600;">Program Completed Successfully!</h2>
+            <p style="font-size: 1.1rem; margin-bottom: 20px; line-height: 1.6; max-width: 800px; margin-left: auto; margin-right: auto;">
+                Thank you to everyone who generously contributed to the Cyclone Relief Fund. 
+                Your donations have made a significant impact on the lives of the children at Rambodagama Primary School.
+            </p>
+            <div style="display: flex; gap: 15px; justify-content: center; flex-wrap: wrap; margin-top: 25px;">
+                <a href="/expenses" style="padding: 12px 30px; background: white; color: #27ae60; border: none; border-radius: 6px; font-weight: 600; font-size: 1rem; text-decoration: none; display: inline-block; transition: all 0.3s; box-shadow: 0 2px 8px rgba(0,0,0,0.2);" onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 4px 12px rgba(0,0,0,0.3)';" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 2px 8px rgba(0,0,0,0.2)';">
+                    📊 View Expenses & Transparency Report
+                </a>
+            </div>
+        </div>
+
+        <!-- Photo Gallery Section -->
+        <div class="section" id="photoGallerySection" style="display: none;">
+            <h2>Photo Gallery</h2>
+            <div id="photoGallery" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px; margin-top: 20px;">
+                <div style="text-align: center; color: #999; padding: 40px;">Loading photos...</div>
+            </div>
+        </div>
 
         <div class="dashboard">
             <div class="card">
@@ -704,6 +775,85 @@
         
         // Refresh visitor statistics every 60 seconds
         setInterval(loadVisitorStatistics, 60000);
+
+        // Photo Gallery
+        async function loadPhotoGallery() {
+            const galleryContainer = document.getElementById('photoGallery');
+            const gallerySection = document.getElementById('photoGallerySection');
+            
+            if (!galleryContainer || !gallerySection) return;
+
+            try {
+                const response = await fetch('/api/photos');
+                if (!response.ok) throw new Error('Failed to fetch photos');
+                
+                const data = await response.json();
+                const photos = data.photos || [];
+
+                if (photos.length === 0) {
+                    gallerySection.style.display = 'none';
+                    return;
+                }
+
+                // Show the gallery section
+                gallerySection.style.display = 'block';
+
+                // Convert Google Drive URLs to direct image URLs if needed
+                galleryContainer.innerHTML = photos.map(photo => {
+                    let imageUrl = photo.url;
+                    // Convert Google Drive URL to direct view URL
+                    if (imageUrl.includes('drive.google.com')) {
+                        const fileIdMatch = imageUrl.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+                        if (fileIdMatch) {
+                            imageUrl = `https://drive.google.com/uc?export=view&id=${fileIdMatch[1]}`;
+                        }
+                    }
+
+                    return `
+                        <div class="gallery-photo-item" onclick="openPhotoModal('${photo.url.replace(/'/g, "\\'")}', '${(photo.caption || '').replace(/'/g, "\\'")}')">
+                            <img src="${imageUrl}" alt="${(photo.caption || 'Gallery photo').replace(/"/g, '&quot;')}" 
+                                 onerror="this.src='data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'300\' height=\'280\'%3E%3Crect fill=\'%23ddd\' width=\'300\' height=\'280\'/%3E%3Ctext fill=\'%23999\' font-family=\'Arial\' font-size=\'14\' x=\'50%25\' y=\'50%25\' text-anchor=\'middle\' dominant-baseline=\'middle\'%3EImage not found%3C/text%3E%3C/svg%3E';">
+                            ${photo.caption ? `<div class="gallery-photo-caption">${photo.caption.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>` : ''}
+                        </div>
+                    `;
+                }).join('');
+            } catch (error) {
+                console.error('Error loading photo gallery:', error);
+                gallerySection.style.display = 'none';
+            }
+        }
+
+        function openPhotoModal(url, caption) {
+            // Convert Google Drive URL to direct view URL if needed
+            let imageUrl = url;
+            if (url.includes('drive.google.com')) {
+                const fileIdMatch = url.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+                if (fileIdMatch) {
+                    imageUrl = `https://drive.google.com/uc?export=view&id=${fileIdMatch[1]}`;
+                }
+            }
+
+            // Create modal
+            const modal = document.createElement('div');
+            modal.style.cssText = 'position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 10000; display: flex; align-items: center; justify-content: center; cursor: pointer;';
+            modal.onclick = () => document.body.removeChild(modal);
+            
+            modal.innerHTML = `
+                <div style="max-width: 90vw; max-height: 90vh; position: relative;" onclick="event.stopPropagation()">
+                    <img src="${imageUrl}" alt="${caption || 'Photo'}" style="max-width: 100%; max-height: 90vh; object-fit: contain; border-radius: 8px;">
+                    ${caption ? `<div style="color: white; text-align: center; margin-top: 15px; font-size: 1.1rem;">${caption.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>` : ''}
+                    <button onclick="document.body.removeChild(this.closest('div[style*=\\'position: fixed\\']'))" 
+                            style="position: absolute; top: -40px; right: 0; background: rgba(255,255,255,0.9); border: none; border-radius: 4px; padding: 10px 20px; cursor: pointer; font-weight: 600; font-size: 1rem;">
+                        Close
+                    </button>
+                </div>
+            `;
+            
+            document.body.appendChild(modal);
+        }
+
+        // Load photo gallery on page load
+        loadPhotoGallery();
     </script>
 
     <script src="app.js"></script>

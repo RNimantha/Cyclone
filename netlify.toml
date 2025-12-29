@@ -18,6 +18,11 @@
   status = 200
 
 [[redirects]]
+  from = "/api/photos"
+  to = "/.netlify/functions/photos"
+  status = 200
+
+[[redirects]]
   from = "/admin/login"
   to = "/login.html"
   status = 200

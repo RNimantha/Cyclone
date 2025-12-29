@@ -118,15 +118,21 @@ function processDonations(donations) {
         lastUpdated: new Date().toISOString()
     };
 }
-// Middleware
-app.use(express.json());
+// Middleware - Increase body size limit for base64 images (50MB)
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 app.use(express.static(path.join(__dirname)));
 // CORS middleware
 app.use((_req, res, next) => {
     res.header('Access-Control-Allow-Origin', '*');
-    res.header('Access-Control-Allow-Methods', 'GET, OPTIONS');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
     res.header('Access-Control-Allow-Headers', 'Content-Type');
-    next();
+    if (_req.method === 'OPTIONS') {
+        res.sendStatus(200);
+    }
+    else {
+        next();
+    }
 });
 // API Routes
 app.get('/api/donations', async (_req, res) => {
@@ -340,6 +346,98 @@ app.get('/admin', (_req, res) => {
 // Serve expenses.html
 app.get('/expenses', (_req, res) => {
     res.sendFile(path.join(__dirname, 'expenses.html'));
+});
+// Photos API endpoint (for local development)
+const SUPABASE_URL = process.env.SUPABASE_URL || '';
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || '';
+app.get('/api/photos', async (_req, res) => {
+    try {
+        if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+            res.status(500).json({ error: 'Supabase not configured' });
+            return;
+        }
+        const response = await fetch(`${SUPABASE_URL}/rest/v1/gallery_photos?select=*&order=display_order.asc,created_at.desc`, {
+            headers: {
+                'apikey': SUPABASE_ANON_KEY,
+                'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+            },
+        });
+        if (!response.ok) {
+            throw new Error(`Supabase error: ${response.statusText}`);
+        }
+        const photos = await response.json();
+        res.json({ photos });
+    }
+    catch (error) {
+        console.error('Photos API error:', error);
+        res.status(500).json({ error: error instanceof Error ? error.message : 'Internal server error' });
+    }
+});
+app.post('/api/photos', async (req, res) => {
+    try {
+        if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+            res.status(500).json({ error: 'Supabase not configured' });
+            return;
+        }
+        const { url, caption, display_order } = req.body;
+        if (!url) {
+            res.status(400).json({ error: 'URL is required' });
+            return;
+        }
+        const response = await fetch(`${SUPABASE_URL}/rest/v1/gallery_photos`, {
+            method: 'POST',
+            headers: {
+                'apikey': SUPABASE_ANON_KEY,
+                'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+                'Content-Type': 'application/json',
+                'Prefer': 'return=representation',
+            },
+            body: JSON.stringify({
+                url,
+                caption: caption || null,
+                display_order: display_order || 0,
+            }),
+        });
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Supabase error: ${response.statusText} - ${errorText}`);
+        }
+        const photo = await response.json();
+        res.json({ photo: photo[0] });
+    }
+    catch (error) {
+        console.error('Photos API error:', error);
+        res.status(500).json({ error: error instanceof Error ? error.message : 'Internal server error' });
+    }
+});
+app.delete('/api/photos', async (req, res) => {
+    try {
+        if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+            res.status(500).json({ error: 'Supabase not configured' });
+            return;
+        }
+        const id = req.query.id;
+        if (!id) {
+            res.status(400).json({ error: 'ID is required' });
+            return;
+        }
+        const response = await fetch(`${SUPABASE_URL}/rest/v1/gallery_photos?id=eq.${id}`, {
+            method: 'DELETE',
+            headers: {
+                'apikey': SUPABASE_ANON_KEY,
+                'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+            },
+        });
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Supabase error: ${response.statusText} - ${errorText}`);
+        }
+        res.json({ success: true });
+    }
+    catch (error) {
+        console.error('Photos API error:', error);
+        res.status(500).json({ error: error instanceof Error ? error.message : 'Internal server error' });
+    }
 });
 // Start server
 app.listen(PORT, () => {
