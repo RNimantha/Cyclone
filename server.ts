@@ -471,13 +471,18 @@ app.get('/expenses', (_req: Request, res: Response) => {
 });
 
 // Photos API endpoint (for local development)
-const SUPABASE_URL = process.env.SUPABASE_URL || '';
-const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || '';
+// For local dev, you can set these as environment variables or hardcode them below
+const SUPABASE_URL = process.env.SUPABASE_URL || 'https://hwomvscfofhdqcrnlqza.supabase.co';
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh3b212c2Nmb2ZoZHFjcm5scXphIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjYzMDM3NzYsImV4cCI6MjA4MTg3OTc3Nn0.oHibiahFQd11Pa_8GBfyi-mBaqnFbLlkfwtuWIinNdQ';
 
 app.get('/api/photos', async (_req: Request, res: Response): Promise<void> => {
     try {
         if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
-            res.status(500).json({ error: 'Supabase not configured' });
+            console.error('Supabase not configured - SUPABASE_URL or SUPABASE_ANON_KEY missing');
+            res.status(500).json({ 
+                error: 'Supabase not configured. Please set SUPABASE_URL and SUPABASE_ANON_KEY environment variables.',
+                photos: [] 
+            });
             return;
         }
 
@@ -492,7 +497,14 @@ app.get('/api/photos', async (_req: Request, res: Response): Promise<void> => {
         );
 
         if (!response.ok) {
-            throw new Error(`Supabase error: ${response.statusText}`);
+            const errorText = await response.text().catch(() => 'Unknown error');
+            console.error(`Supabase API error (${response.status}):`, errorText);
+            // If table doesn't exist yet, return empty array instead of error
+            if (response.status === 404 || response.status === 400) {
+                res.json({ photos: [] });
+                return;
+            }
+            throw new Error(`Supabase error (${response.status}): ${response.statusText}`);
         }
 
         const photos = await response.json();

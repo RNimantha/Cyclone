@@ -563,7 +563,10 @@
 
             try {
                 const response = await fetch('/api/photos');
-                if (!response.ok) throw new Error('Failed to fetch photos');
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({ error: 'Failed to fetch photos' }));
+                    throw new Error(errorData.error || `Failed to fetch photos (${response.status})`);
+                }
                 
                 const data = await response.json();
                 const photos = data.photos || [];

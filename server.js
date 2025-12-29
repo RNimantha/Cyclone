@@ -348,12 +348,17 @@ app.get('/expenses', (_req, res) => {
     res.sendFile(path.join(__dirname, 'expenses.html'));
 });
 // Photos API endpoint (for local development)
-const SUPABASE_URL = process.env.SUPABASE_URL || '';
-const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || '';
+// For local dev, you can set these as environment variables or hardcode them below
+const SUPABASE_URL = process.env.SUPABASE_URL || 'https://hwomvscfofhdqcrnlqza.supabase.co';
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh3b212c2Nmb2ZoZHFjcm5scXphIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjYzMDM3NzYsImV4cCI6MjA4MTg3OTc3Nn0.oHibiahFQd11Pa_8GBfyi-mBaqnFbLlkfwtuWIinNdQ';
 app.get('/api/photos', async (_req, res) => {
     try {
         if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
-            res.status(500).json({ error: 'Supabase not configured' });
+            console.error('Supabase not configured - SUPABASE_URL or SUPABASE_ANON_KEY missing');
+            res.status(500).json({
+                error: 'Supabase not configured. Please set SUPABASE_URL and SUPABASE_ANON_KEY environment variables.',
+                photos: []
+            });
             return;
         }
         const response = await fetch(`${SUPABASE_URL}/rest/v1/gallery_photos?select=*&order=display_order.asc,created_at.desc`, {
@@ -363,7 +368,14 @@ app.get('/api/photos', async (_req, res) => {
             },
         });
         if (!response.ok) {
-            throw new Error(`Supabase error: ${response.statusText}`);
+            const errorText = await response.text().catch(() => 'Unknown error');
+            console.error(`Supabase API error (${response.status}):`, errorText);
+            // If table doesn't exist yet, return empty array instead of error
+            if (response.status === 404 || response.status === 400) {
+                res.json({ photos: [] });
+                return;
+            }
+            throw new Error(`Supabase error (${response.status}): ${response.statusText}`);
         }
         const photos = await response.json();
         res.json({ photos });
